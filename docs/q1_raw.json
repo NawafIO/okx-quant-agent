@@ -1,0 +1,135 @@
+{
+  "measured_at_utc": "2026-10-02 12:49",
+  "ccxt_version": "4.5.85",
+  "ohlcv": [
+    {
+      "symbol": "BTC/USDT:USDT",
+      "timeframe": "1m",
+      "earliest": 1576460398612,
+      "earliest_iso": "2019-12-16 01:39",
+      "depth_years": 6.8,
+      "approx_bars": 3574749,
+      "limited_by": "RETENTION"
+    },
+    {
+      "symbol": "BTC/USDT:USDT",
+      "timeframe": "5m",
+      "earliest": 1576386332182,
+      "earliest_iso": "2019-12-15 05:05",
+      "depth_years": 6.8,
+      "approx_bars": 715196,
+      "limited_by": "RETENTION"
+    },
+    {
+      "symbol": "BTC/USDT:USDT",
+      "timeframe": "1h",
+      "earliest": 1575396880649,
+      "earliest_iso": "2019-12-03 18:14",
+      "depth_years": 6.83,
+      "approx_bars": 59874,
+      "limited_by": "RETENTION"
+    },
+    {
+      "symbol": "BTC/USDT:USDT",
+      "timeframe": "1d",
+      "earliest": 1551917822473,
+      "earliest_iso": "2019-03-07 00:17",
+      "depth_years": 7.57,
+      "approx_bars": 2766,
+      "limited_by": "listing"
+    },
+    {
+      "symbol": "ETH/USDT:USDT",
+      "timeframe": "1m",
+      "earliest": 1577214356883,
+      "earliest_iso": "2019-12-24 19:05",
+      "depth_years": 6.77,
+      "approx_bars": 3562183,
+      "limited_by": "RETENTION"
+    },
+    {
+      "symbol": "ETH/USDT:USDT",
+      "timeframe": "5m",
+      "earliest": 1577142189593,
+      "earliest_iso": "2019-12-23 23:03",
+      "depth_years": 6.78,
+      "approx_bars": 712677,
+      "limited_by": "RETENTION"
+    },
+    {
+      "symbol": "ETH/USDT:USDT",
+      "timeframe": "1h",
+      "earliest": 1576152738059,
+      "earliest_iso": "2019-12-12 12:12",
+      "depth_years": 6.81,
+      "approx_bars": 59664,
+      "limited_by": "RETENTION"
+    },
+    {
+      "symbol": "ETH/USDT:USDT",
+      "timeframe": "1d",
+      "earliest": 1551917822473,
+      "earliest_iso": "2019-03-07 00:17",
+      "depth_years": 7.57,
+      "approx_bars": 2766,
+      "limited_by": "listing"
+    },
+    {
+      "symbol": "SOL/USDT:USDT",
+      "timeframe": "1m",
+      "earliest": 1611281001483,
+      "earliest_iso": "2021-01-22 02:03",
+      "depth_years": 5.69,
+      "approx_bars": 2994406,
+      "limited_by": "listing"
+    },
+    {
+      "symbol": "SOL/USDT:USDT",
+      "timeframe": "5m",
+      "earliest": 1611210108892,
+      "earliest_iso": "2021-01-21 06:21",
+      "depth_years": 5.7,
+      "approx_bars": 599117,
+      "limited_by": "listing"
+    },
+    {
+      "symbol": "SOL/USDT:USDT",
+      "timeframe": "1h",
+      "earliest": 1610217612618,
+      "earliest_iso": "2021-01-09 18:40",
+      "depth_years": 5.73,
+      "approx_bars": 50202,
+      "limited_by": "listing"
+    },
+    {
+      "symbol": "SOL/USDT:USDT",
+      "timeframe": "1d",
+      "earliest": 1585440652061,
+      "earliest_iso": "2020-03-29 00:10",
+      "depth_years": 6.51,
+      "approx_bars": 2378,
+      "limited_by": "listing"
+    }
+  ],
+  "throughput": {
+    "1h": {
+      "pages": 8,
+      "bars": 2101,
+      "seconds": 2.43,
+      "bars_per_sec": 864.2
+    },
+    "1m": {
+      "pages": 8,
+      "bars": 2131,
+      "seconds": 2.43,
+      "bars_per_sec": 876.6
+    }
+  },
+  "funding": {
+    "oldest": 1788076800000,
+    "oldest_iso": "2026-08-30 08:00",
+    "pages_walked": 40,
+    "depth_years": 0.09,
+    "interval_hours": 8
+  }
+}

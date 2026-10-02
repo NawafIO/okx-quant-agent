@@ -1,0 +1,29 @@
+{
+  "BTC/USDT:USDT": {
+    "oldest": 1782720000000,
+    "oldest_iso": "2026-06-29 08:00",
+    "depth_years": 0.26,
+    "rows": 286,
+    "pages": 3,
+    "seconds": 0.8,
+    "interval_hours": 8
+  },
+  "ETH/USDT:USDT": {
+    "oldest": 1782720000000,
+    "oldest_iso": "2026-06-29 08:00",
+    "depth_years": 0.26,
+    "rows": 286,
+    "pages": 3,
+    "seconds": 0.8,
+    "interval_hours": 8
+  },
+  "SOL/USDT:USDT": {
+    "oldest": 1782720000000,
+    "oldest_iso": "2026-06-29 08:00",
+    "depth_years": 0.26,
+    "rows": 286,
+    "pages": 3,
+    "seconds": 0.8,
+    "interval_hours": 8
+  }
+}

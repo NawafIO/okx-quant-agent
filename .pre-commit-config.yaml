@@ -1,0 +1,43 @@
+# Pre-commit hooks (architecture §20.3; carried forward from M0's prerequisite P-4).
+#
+# The secret scan is the point of this file. It must be in place BEFORE P-5 creates the
+# first OKX demo API key - a credential committed once is in the history permanently, and
+# rewriting history is a far worse day than installing a hook.
+#
+# Install locally:  .venv\Scripts\python.exe -m pre_commit install
+repos:
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.5.0
+    hooks:
+      - id: detect-secrets
+        name: detect secrets (blocks credential commits)
+        args: ["--baseline", ".secrets.baseline"]
+        # Lockfiles and the audit trail contain high-entropy strings that are not secrets:
+        # package hashes and SHA-256 chain hashes. Excluded to keep the signal usable -
+        # a scanner everyone learns to bypass protects nothing.
+        exclude: |
+          (?x)^(
+            uv\.lock|
+            \.secrets\.baseline|
+            audit/.*|
+            docs/q1_.*\.json
+          )$
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: detect-private-key
+      - id: check-added-large-files
+        args: ["--maxkb=2048"]
+      - id: check-merge-conflict
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+      - id: check-yaml
+      - id: check-toml
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.14.1
+    hooks:
+      - id: ruff-check
+        args: ["--fix"]
+      - id: ruff-format

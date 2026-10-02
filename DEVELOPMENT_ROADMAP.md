@@ -42,6 +42,7 @@ happen in Phase 2 or 3. See architecture §6.4.
 | **P-7** | Advisor verdict RECOMMEND TO APPLY + user authorisation | This roadmap is not self-authorising |
 | **P-8** | Rulings on architecture §23 Q-4 (risk budget numbers) and Q-5 (HITL permanence) | **SATISFIED - both ruled by the Chief Advisor 2026-10-02; see architecture §23** |
 | **P-9** | LLM API credential (for subsystems 3, 6, 15, 17 narration) | Needed at M8 (audit finding **F-2**). **Its absence never blocks trading** - the system degrades closed to deterministic rules (architecture §5.2) |
+| **P-10** | **Host clock resync + adapter boot-time skew check** | **NEW, discovered at M1. BLOCKING FOR M6.** The host clock measured **~199 s (3m19s) ahead** of OKX's server, consistently across three latency-compensated samples (`docs/VENUE_FACTS.md` §5). Harmless for M1's unsigned public requests; **OKX rejects *signed* requests far below that drift**. Two parts: (a) `w32tm /resync` elevated plus Windows Time service set to automatic - **a change to the user's machine, their call**; (b) an adapter boot check refusing authenticated operations beyond the venue's tolerance, **that tolerance to be measured at M6, not assumed** |
 
 ---
 
@@ -134,6 +135,16 @@ Better to find that at M1 than at M5.
 
 ### M2 - Event-Driven Backtesting Engine + acceptance gates
 *The self-testing core. Built before any strategy, so no strategy is ever judged by a lenient engine.*
+
+**Added at M1 - funding reconstruction (advisor ruling, `docs/VENUE_FACTS.md` §2).** OKX retains only
+**~3 months** of realised funding, but M2's cost model accrues funding across a multi-year
+walk-forward. M1 collected mark and index 1h candles (6.76y depth) as the inputs. M2 must:
+build a modelled funding series from the mark/index premium; **validate it against realised funding
+over the ~3-month overlap** - reproducing *cumulative* funding drag within a stated tolerance
+(provisional: 20% relative error plus sign agreement on the large majority of intervals, finalised
+from the measured error distribution); and **escalate to the Chief Advisor if that tolerance cannot
+be met**. Do not assert OKX's funding formula from memory - the empirical check is the gate.
+**G-9's 2x cost stress applies to modelled funding too**, which is what backstops the model error.
 
 **Deliverables:** chronological event loop with the **right-truncated history view** (look-ahead
 prevented structurally, §11.1); realistic cost model (real fee tiers, funding accrual, scaled

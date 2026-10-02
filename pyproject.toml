@@ -13,6 +13,10 @@ dependencies = [
     "numpy>=1.26,<3",
     "duckdb>=1.1,<2",
     "pyarrow>=17",
+    # Q-3 resolved at M1: TA-Lib installs from a prebuilt Windows wheel on this host, no C
+    # toolchain needed, and computes correctly (201 functions). Declared here rather than
+    # installed ad hoc, so `uv sync --locked` in CI reproduces it.
+    "ta-lib>=0.6",
 ]
 
 [project.optional-dependencies]
@@ -23,6 +27,9 @@ dev = [
     "mypy>=1.11",
     "ruff>=0.6",
     "pandas-stubs>=2.2",
+    # Directive objective 4: pre-commit secret scan (carried forward from M0's P-4).
+    "pre-commit>=3.8",
+    "detect-secrets>=1.5",
 ]
 
 [build-system]
@@ -47,6 +54,10 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 # Tests assert, use magic values, and deliberately handle fake secrets.
 "tests/**" = ["S101", "S105", "S106", "ANN201", "ANN001"]
+# Recon scripts are committed as dated *evidence* for the Q-1/Q-3 findings in
+# docs/VENUE_FACTS.md, not as library code. They assert, print, and catch broadly while
+# probing an unfamiliar API - which is the correct shape for a probe.
+"scripts/**" = ["S101", "ANN", "BLE001", "T201", "INP001"]
 
 # --- mypy -------------------------------------------------------------------
 [tool.mypy]
@@ -72,6 +83,16 @@ warn_required_dynamic_aliases = true
 [[tool.mypy.overrides]]
 module = "ccxt.*"
 ignore_missing_imports = true
+
+# pyarrow ships no py.typed marker.
+[[tool.mypy.overrides]]
+module = ["pyarrow.*", "duckdb.*"]
+ignore_missing_imports = true
+
+# Recon scripts are committed evidence, not library code (see ruff per-file-ignores).
+[[tool.mypy.overrides]]
+module = "scripts.*"
+ignore_errors = true
 
 # --- pytest -----------------------------------------------------------------
 [tool.pytest.ini_options]

@@ -17,10 +17,13 @@ A quantitative multi-agent trading system for OKX, built under a strict phased p
 | | |
 |---|---|
 | Phase | 2 of 4 - Foundation & Research |
-| Milestone | **M0 complete** (scaffold, contracts, env decoupling, audit chain) |
-| Next | M1 - Historical Data Pipeline + venue reconnaissance (Q-1, Q-2, Q-3) |
+| Milestone | **M1 complete** (data pipeline, venue reconnaissance). M0 complete. |
+| Next | M2 - Event-driven backtester + §11.3 acceptance gates |
 | Environments buildable | DEMO (M6), PAPER (M7) |
 | Environments locked | **LIVE** |
+
+**Measured venue facts live in `docs/VENUE_FACTS.md`** - history depth, API traps, clock skew. Read it
+before writing anything that talks to OKX; every number there was measured, not assumed.
 
 ## Documents
 
@@ -72,6 +75,39 @@ chain and appends a `boot` record. **There is no trading loop yet** - the master
 arrives with M5/M6, and nothing order-capable is built until the Risk Engine is complete and
 property-tested (roadmap sequencing constraint).
 
+## Data pipeline (M1)
+
+Public endpoints only - no credential is read, constructed or transmitted.
+
+```powershell
+# Backfill: 20 liquid USDT perps, 1d + 1h over 7 years, mark/index for 5, funding for all
+.venv\Scripts\python.exe -m okxq.data.cli backfill --env PAPER --symbols 20 --years 7 --timeframes 1d 1h
+
+# Coverage and gap report
+.venv\Scripts\python.exe -m okxq.data.cli report --env PAPER
+```
+
+Backfill is **idempotent and resumable**: completed calendar-month partitions are skipped, and a
+resumed run consults the manifest so it fetches only what is missing rather than re-walking years of
+pages. The in-progress month is always rewritten, since it will keep gaining bars.
+
+Storage, per environment:
+
+```
+data/<env>/parquet/ohlcv/inst_id=.../timeframe=.../price_type=.../year=.../month=.../part.parquet
+data/<env>/parquet/funding/inst_id=.../...
+data/<env>/analytics.db          DuckDB views over the Parquet (views, not copies)
+state/<env>/data_manifest.db     SQLite coverage manifest: partitions, gaps, rejections, runs
+```
+
+Prices are stored as `DECIMAL(38,18)` sourced from the venue's raw **string** fields, so exactness
+survives ingestion and DuckDB arithmetic (rule D-1). CCXT's unified `fetch_ohlcv` returns floats,
+which is why the implicit endpoints are used instead.
+
+Validation **quarantines, never repairs**: no forward-filling, no interpolation, no clipping. Gaps
+are recorded in the manifest, because a missing bar is information - a venue outage or a halt - and
+the backtester needs to know which.
+
 ## Layout
 
 ```
@@ -82,10 +118,21 @@ src/okxq/
   env/profiles.py   DEMO/PAPER/LIVE profiles; per-env physical isolation
   audit/chain.py    §20.2 append-only hash-chained audit trail
   obs/              structured JSON logging + secret redaction
+  data/             §12 pipeline: okx_public, validate, store, manifest, backfill, cli
   run.py            CLI entry point; --env required
 tests/
   guards/           ZERO-LIVE-CAPITAL guards - a failure here blocks all progress
-  unit/             contracts, audit chain
+  unit/             contracts, audit chain, validation, store durability, venue traps
+scripts/recon_*.py  dated evidence for the Q-1/Q-3 findings in docs/VENUE_FACTS.md
+```
+
+## Pre-commit
+
+A secret scan guards against committing a credential - installed **before** any API key exists.
+
+```powershell
+.venv\Scripts\python.exe -m pre_commit install
+.venv\Scripts\python.exe -m pre_commit run --all-files
 ```
 
 ## The three environments
