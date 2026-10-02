@@ -45,11 +45,53 @@ def test_unclosed_bar_rejected_not_repaired() -> None:
     assert [r.rule for r in report.rejected] == ["unclosed_bar"]
 
 
-def test_bar_that_has_not_closed_yet_is_rejected() -> None:
-    """A bar whose close time is in the future cannot be trusted as final."""
-    report = validate_bars([bar(0)], "1h", now_ms=BASE + HOUR // 2)
+def test_clearly_future_bar_is_rejected() -> None:
+    """A bar well beyond now cannot be trusted as final."""
+    report = validate_bars([bar(10)], "1h", now_ms=BASE)
     assert not report.accepted
     assert report.rejected[0].rule == "future_or_incomplete"
+
+
+def test_clock_skew_does_not_quarantine_good_bars() -> None:
+    """Regression: a slightly-behind clock must not discard valid closed bars.
+
+    The first 5m run lost 9 genuine bars this way - ``now_ms`` was sampled once per phase,
+    went stale over a ~50-minute run, and bars the venue had marked closed looked like
+    future bars. The host also measures ~199 s of skew against the venue, so the guard
+    carries one bar of tolerance and the venue's confirm flag remains authoritative.
+    """
+    # Bar opened at BASE, closes at BASE+HOUR. A clock reading slightly *before* its close
+    # must still accept it.
+    report = validate_bars([bar(0)], "1h", now_ms=BASE + HOUR // 2)
+    assert len(report.accepted) == 1, "a clock marginally behind must not lose data"
+    assert not report.rejected
+
+
+def test_stale_clock_reading_is_tolerated() -> None:
+    """A clock reading slightly behind the bar's open must not lose the bar."""
+    report = validate_bars([bar(0)], "1h", now_ms=BASE - 1)
+    assert len(report.accepted) == 1
+    assert not report.rejected
+
+
+def test_measured_host_skew_does_not_lose_bars() -> None:
+    """The specific failure: ~199 s of host clock skew must not quarantine 5m bars."""
+    step = TIMEFRAME_MS["5m"]
+    base_5m = 1_700_000_000_000 // step * step
+    recent = Bar(
+        ts_open_ms=base_5m,
+        open=Decimal(100),
+        high=Decimal(110),
+        low=Decimal(95),
+        close=Decimal(105),
+        volume_contracts=Decimal(1),
+        volume_base=Decimal(1),
+        volume_quote=Decimal(1),
+        is_closed=True,
+    )
+    # Clock reading 199 s behind the bar's open, as measured on this host.
+    report = validate_bars([recent], "5m", now_ms=base_5m - 199_000)
+    assert len(report.accepted) == 1, "measured host skew must not cause data loss"
 
 
 def test_off_grid_bar_rejected() -> None:

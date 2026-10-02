@@ -59,7 +59,9 @@ ignore = [
 # probing an unfamiliar API - which is the correct shape for a probe.
 # S608 (SQL injection) is noise here: the queries interpolate our own local Parquet paths
 # and literal constants, with no untrusted input and read-only access to local files.
-"scripts/**" = ["S101", "ANN", "BLE001", "T201", "INP001", "S608"]
+# S603/S607 (subprocess) are expected: verify_kill_resume.py deliberately spawns the CLI
+# with a fixed, literal argument list in order to hard-kill it.
+"scripts/**" = ["S101", "ANN", "BLE001", "T201", "INP001", "S608", "S603", "S607"]
 
 # --- mypy -------------------------------------------------------------------
 [tool.mypy]
