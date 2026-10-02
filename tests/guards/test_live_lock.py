@@ -6,6 +6,7 @@ ZERO-LIVE-CAPITAL policy.
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pytest
@@ -15,6 +16,16 @@ from okxq.env.profiles import build_profile
 from okxq.errors import LiveTradingLockedError, SafetyError
 
 pytestmark = pytest.mark.guard
+
+_LIVE_VARS = ("OKXQ_LIVE_API_KEY", "OKXQ_LIVE_API_SECRET", "OKXQ_LIVE_API_PASSPHRASE")
+
+#: The host environment as it was at import time. Captured at module scope deliberately:
+#: ``tests/conftest.py`` has an autouse fixture that deletes these variables before every
+#: test, and collection happens before fixtures run. Asserting against ``os.environ`` inside
+#: a test would therefore only confirm that the fixture works - it would stay green even if
+#: the operator really did have a LIVE key in their shell. This snapshot is what makes the
+#: Layer 1 guard below load-bearing rather than vacuous.
+_HOST_LIVE_VARS: dict[str, str | None] = {v: os.environ.get(v) for v in _LIVE_VARS}
 
 
 def test_phase_is_below_live_unlock() -> None:
@@ -70,12 +81,23 @@ def test_live_check_is_not_dead_code(monkeypatch: pytest.MonkeyPatch, tmp_path: 
     assert profile.credentials is None
 
 
-def test_no_live_credentials_are_provisioned() -> None:
-    """LIVE lock Layer 1: no trade-permitted LIVE credential exists in this environment."""
-    import os
+def test_no_live_credentials_are_provisioned_on_the_host() -> None:
+    """LIVE lock Layer 1: no trade-permitted LIVE credential exists on this host.
 
-    for var in ("OKXQ_LIVE_API_KEY", "OKXQ_LIVE_API_SECRET", "OKXQ_LIVE_API_PASSPHRASE"):
-        assert os.environ.get(var) is None, (
-            f"{var} is set. LIVE lock Layer 1 is violated: no trade-permitted LIVE "
-            "credential may exist before Phase 4 sign-off."
+    Checked against the import-time snapshot, not ``os.environ`` - see ``_HOST_LIVE_VARS``.
+    """
+    for var, value in _HOST_LIVE_VARS.items():
+        assert value is None, (
+            f"{var} is set on this host. LIVE lock Layer 1 is violated: no trade-permitted "
+            "LIVE credential may exist before Phase 4 sign-off."
         )
+
+
+def test_host_snapshot_would_detect_a_provisioned_credential() -> None:
+    """Negative control proving the guard above can actually fail.
+
+    Without this, a refactor that broke the snapshot into an always-empty dict would leave
+    the Layer 1 guard passing forever - which is precisely the defect this pair replaced.
+    """
+    polluted = {**_HOST_LIVE_VARS, "OKXQ_LIVE_API_KEY": "leaked-key-value"}
+    assert any(v is not None for v in polluted.values())

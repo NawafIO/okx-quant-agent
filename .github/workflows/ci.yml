@@ -44,8 +44,9 @@ jobs:
         # detail buried in a 70-test summary.
         run: uv run pytest -m guard -v
 
-      - name: Full suite with coverage
-        run: uv run pytest --cov --cov-report=term-missing --cov-report=xml
-
-      - name: Assert no network test ran
-        run: uv run pytest -m network --collect-only -q
+      - name: Full suite with coverage (offline)
+        # -m "not network" is the actual enforcement that CI stays offline. An earlier
+        # version of this file instead ran `pytest -m network --collect-only`, which was
+        # inverted both ways: pytest exits 5 ("no tests collected") when the invariant
+        # holds, failing the job, and exits 0 if network tests do exist. Verified locally.
+        run: uv run pytest -m "not network" --cov --cov-report=term-missing --cov-report=xml

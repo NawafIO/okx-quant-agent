@@ -104,7 +104,7 @@ models (runtime validation at every boundary) with `Decimal` for all money and q
 
 > **D-2 - Every record carries `env: Literal["DEMO","PAPER","LIVE"]`.** It is a required field, not a
 > default. Any module receiving a record whose `env` differs from its own bound environment raises
-> `EnvironmentMismatch` and halts - it does not coerce, log-and-continue, or fall back. This makes
+> `EnvironmentMismatchError` and halts - it does not coerce, log-and-continue, or fall back. This makes
 > cross-environment contamination a loud crash instead of a silent live order.
 
 ```python

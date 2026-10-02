@@ -10,6 +10,7 @@ are never passed into an LLM context and never written to the project tree.
 
 from __future__ import annotations
 
+import json
 import threading
 
 REDACTED = "***REDACTED***"
@@ -23,11 +24,23 @@ _secrets: set[str] = set()
 
 
 def register_secret(value: str | None) -> None:
-    """Register a secret value for redaction. Short or empty values are ignored."""
+    """Register a secret value for redaction. Short or empty values are ignored.
+
+    The JSON-escaped form is registered alongside the raw value. Both the log formatter and
+    the audit chain redact *after* ``json.dumps``, so a secret containing a quote or a
+    backslash - legal in a user-chosen OKX passphrase - would appear in the serialised text
+    as ``\\"`` or ``\\\\`` and slip past a raw substring match, landing in the permanent
+    audit chain in trivially recoverable escaped form. Registering both variants closes
+    that bypass in one place rather than at each redaction site.
+    """
     if not value or len(value) < _MIN_SECRET_LEN:
         return
+    # json.dumps wraps in quotes; strip them to get the escaped body only.
+    escaped = json.dumps(value)[1:-1]
     with _lock:
         _secrets.add(value)
+        if escaped != value:
+            _secrets.add(escaped)
 
 
 def clear_secrets() -> None:

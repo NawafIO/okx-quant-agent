@@ -23,8 +23,9 @@ findings F-1/F-2 (both applied). **Awaiting user authorisation.** See `SYSTEM_AR
 | **3** | Simulated Operation (M6-M9) | DEMO, then PAPER | §11.4 criteria met + 30 days stable |
 | **4** | Live (NOT AUTHORISED; separate decision) | LIVE | Written human sign-off; `PHASE` constant raised |
 
-`PHASE = 1` today. LIVE is unreachable until that constant is deliberately raised in source, **and**
-LIVE credentials are provisioned, which does not happen in Phase 2 or 3. See architecture §6.4.
+`PHASE = 2` today (`src/okxq/phase.py`), and `LIVE_UNLOCK_PHASE = 4`. LIVE is unreachable until that
+constant is deliberately raised in source, **and** LIVE credentials are provisioned, which does not
+happen in Phase 2 or 3. See architecture §6.4.
 
 ---
 

@@ -7,6 +7,7 @@ credentials are never written to the project tree and never enter an LLM context
 from __future__ import annotations
 
 import io
+import json
 import logging
 from collections.abc import Iterator
 from pathlib import Path
@@ -15,7 +16,13 @@ import pytest
 
 from okxq.audit.chain import AuditChain, verify_chain
 from okxq.obs.logging import configure_logging, get_logger
-from okxq.obs.secrets import REDACTED, clear_secrets, redact, register_secret
+from okxq.obs.secrets import (
+    REDACTED,
+    clear_secrets,
+    redact,
+    register_secret,
+    registered_count,
+)
 
 pytestmark = pytest.mark.guard
 
@@ -108,3 +115,44 @@ def test_short_values_are_not_registered() -> None:
 def test_unregistered_secret_is_not_redacted() -> None:
     """Negative control: redaction works by registration, so the test above is meaningful."""
     assert DUMMY_SECRET in redact(f"key={DUMMY_SECRET}")
+
+
+# --- F-4: secrets containing JSON metacharacters ----------------------------------------
+
+# A passphrase is user-chosen and may legally contain a quote and a backslash. Both the log
+# formatter and the audit chain redact after json.dumps, so these characters arrive escaped.
+AWKWARD_SECRET = 'pa"ss\\word-9f2b'
+
+
+def test_awkward_secret_absent_from_log() -> None:
+    register_secret(AWKWARD_SECRET)
+    stream = io.StringIO()
+    configure_logging(level=logging.DEBUG, stream=stream)
+    get_logger("t").info("auth", extra={"passphrase": AWKWARD_SECRET})
+
+    output = stream.getvalue()
+    assert AWKWARD_SECRET not in output
+    # The escaped form must be gone too - that is the actual bypass.
+    assert "pa" not in output or REDACTED in output
+    assert "ss\\\\word" not in output
+    assert "9f2b" not in output
+
+
+def test_awkward_secret_absent_from_audit_chain(tmp_path: Path) -> None:
+    """The audit chain is permanent, so an escaped-form leak here is unrecoverable."""
+    register_secret(AWKWARD_SECRET)
+    path = tmp_path / "audit.jsonl"
+    AuditChain(path).append("auth", {"passphrase": AWKWARD_SECRET})
+
+    raw = path.read_text(encoding="utf-8")
+    assert AWKWARD_SECRET not in raw
+    assert "9f2b" not in raw
+    assert REDACTED in raw
+
+
+def test_escaped_variant_is_registered() -> None:
+    """The escaped form is registered in addition to the raw value, not instead of it."""
+    register_secret(AWKWARD_SECRET)
+    assert registered_count() == 2
+    assert redact(AWKWARD_SECRET) == REDACTED
+    assert redact(json.dumps(AWKWARD_SECRET)[1:-1]) == REDACTED
