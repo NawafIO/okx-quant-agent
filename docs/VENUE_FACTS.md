@@ -12,25 +12,46 @@ Method: public REST endpoints only, no credentials. Raw evidence in `docs/q1_raw
 
 ## 1. Q-1 RESOLVED - OHLCV history depth: **sufficient**
 
-Method: binary search for the earliest timestamp returning data. `probe(t)` is monotonic in `t`
-(no data below the boundary, data above it), so the search is valid at ~19 requests per series.
+**Authoritative figures are from the completed backfill**, which actually retrieved and stored the
+bars, verified independently in DuckDB (`scripts/verify_data_quality.py`):
 
-| Symbol | listTime | 1m | 5m | 1h | 1d |
-|---|---|---|---|---|---|
-| BTC/USDT:USDT | 2019-11-12 | **6.80y** (2019-12-16) | **6.80y** (2019-12-15) | **6.83y** (2019-12-03) | **7.57y** (2019-03-07) |
-| ETH/USDT:USDT | 2019-11-12 | 6.77y (2019-12-24) | 6.78y (2019-12-23) | 6.81y (2019-12-12) | 7.57y (2019-03-07) |
-| SOL/USDT:USDT | 2021-01-22 | 5.69y (2021-01-22) | 5.70y (2021-01-21) | 5.73y (2021-01-09) | 6.51y (2020-03-29) |
+| Symbol | listTime | 1h (stored) | 1d (stored) |
+|---|---|---|---|
+| BTC/USDT:USDT | 2019-11-12 | **2019-12-16** -> 2026-10-02, 59,580 bars = **6.80y** | **2020-01-01**, 2,466 bars = **6.75y** |
+| ETH/USDT:USDT | 2019-11-12 | 2019-12-25 -> 2026-10-02, 59,370 bars = 6.77y | 2020-01-01, 2,466 bars = 6.75y |
+| SOL/USDT:USDT | 2021-01-22 | 2021-01-23 onward | 2021-01-23, 2,078 bars |
 
-**Verdict: PASS.** ~6.8 years on 1m/5m/1h for the majors, against the §11.3 walk-forward requirement
-of >= 3 years spanning a full bull and bear phase. The 2021 bull, the 2022 bear and the 2020 crash
+**Verdict: PASS.** ~6.8 years of hourly data on the majors against the §11.3 walk-forward requirement
+of >= 3 years spanning a full bull and bear phase. The 2021 bull, the 2022 bear and the 2024-25 cycle
 are all inside the sample. **Risk R-9 is closed favourably. No secondary OHLCV source is needed.**
 
-> **Correction to the raw output.** `q1_raw.json` labels the 1m/5m/1h boundaries
-> `limited_by=RETENTION`. That label is an artefact of the probe's 2-day threshold and is **wrong**.
-> A rolling retention window would sit at a fixed distance from *now*; these boundaries sit at a
-> fixed *calendar date* (~Dec 2019), roughly a month after listing. The correct reading is simply
-> **"data begins ~Dec 2019"**. 1d data predates the swap listing because OKX backfills the daily
-> series from the underlying index.
+> ### Correction - the recon probe was systematically biased early
+>
+> `docs/q1_raw.json` reports earlier boundaries than the backfill actually retrieved, most starkly
+> **7.57y (2019-03-07) for 1d**. **That figure is wrong.** Verified directly: walking `1Dutc`
+> backward with explicit `after` cursors exhausts the venue at **2020-01-01** (page 9 returns 67
+> rows, page 10 is empty), and `fetch_ohlcv(since=2019-03-01)` returns **empty**.
+>
+> **Cause:** the probe asked *"does a 300-bar window starting at t return anything?"*, not *"is there
+> data at t?"*. Any `t` within one page-width below the true start still overlaps real data, so the
+> binary search converged up to one page-width too early. The arithmetic confirms it exactly:
+>
+> | Timeframe | Page width | Recon claim | True start | Error |
+> |---|---|---|---|---|
+> | 1d | 300 days | 2019-03-07 | 2020-01-01 | **299 days** |
+> | 1h | 12.5 days | 2019-12-03 | 2019-12-16 | **13 days** |
+>
+> Both errors equal the page width. **Lesson: a presence probe must test the point, not a window
+> anchored at the point.** The 1m/5m recon figures carry the same bias, bounded by 5 hours and
+> ~25 hours respectively, so they are approximately right but not exact.
+>
+> Also withdrawn: the earlier speculation that *"1d data predates the swap listing because OKX
+> backfills from the underlying index"*. It does not - 2020-01-01 is **after** the 2019-11-12
+> listing. That claim was inference, not measurement, and was wrong.
+>
+> The `limited_by=RETENTION` label in the raw JSON is likewise an artefact of the probe's 2-day
+> threshold. These boundaries sit at a fixed *calendar date*, not a fixed distance from now, so they
+> are not a rolling retention window. The correct reading is **"data begins ~Dec 2019 / Jan 2020"**.
 
 ### Throughput
 
@@ -53,6 +74,29 @@ it, and no strategy yet demands it. Revisit when one does.
 | BTC/USDT:USDT | 2026-06-29 08:00 | **0.26y** | 286 | 8h |
 | ETH/USDT:USDT | 2026-06-29 08:00 | **0.26y** | 286 | 8h |
 | SOL/USDT:USDT | 2026-06-29 08:00 | **0.26y** | 286 | 8h |
+
+Across the full 20-instrument backfill: 6,598 rows, 2026-06-29 -> 2026-10-02, same boundary for every
+instrument.
+
+> ### V-13 - **the funding interval is per-instrument, not a global 8h**
+>
+> Found by independent verification of the stored data, after the initial probe of three majors had
+> suggested a uniform 8h cadence. Of the 20-instrument universe:
+>
+> | Interval | Instruments | Rows each (95-day window) |
+> |---|---|---|
+> | **8h** | 17 (BTC, ETH, SOL, XRP, DOGE, AAVE, NEAR, UNI, ZEC, PEPE, SUI, WLD, SAND, XAU, HYPE, MU, SNDK) | 286 |
+> | **4h** | **3 (CL, PUMP, TRUMP)** | **572** |
+>
+> Each is perfectly regular (`range=[4,4]` / `range=[8,8]`), so this is a stable venue property per
+> instrument, not drift.
+>
+> **Consequence for M2:** funding accrual **must read the interval per instrument**. Assuming a
+> global 8h would **under-accrue funding by half** on those three - a systematic cost understatement
+> that biases backtests *in the profitable direction*, which is the dangerous direction. The interval
+> is derivable from consecutive `fundingTime` values and must not be hardcoded. Accordingly, funding
+> partitions are labelled `timeframe=funding` rather than `timeframe=8h`, so the store does not
+> assert a cadence it cannot guarantee.
 
 The boundary is **identical across all three symbols** and sits ~95 days from the measurement date,
 while the instruments listed in 2019 and 2021. That is a **venue retention limit**, not a listing

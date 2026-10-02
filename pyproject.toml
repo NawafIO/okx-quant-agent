@@ -57,7 +57,9 @@ ignore = [
 # Recon scripts are committed as dated *evidence* for the Q-1/Q-3 findings in
 # docs/VENUE_FACTS.md, not as library code. They assert, print, and catch broadly while
 # probing an unfamiliar API - which is the correct shape for a probe.
-"scripts/**" = ["S101", "ANN", "BLE001", "T201", "INP001"]
+# S608 (SQL injection) is noise here: the queries interpolate our own local Parquet paths
+# and literal constants, with no untrusted input and read-only access to local files.
+"scripts/**" = ["S101", "ANN", "BLE001", "T201", "INP001", "S608"]
 
 # --- mypy -------------------------------------------------------------------
 [tool.mypy]
