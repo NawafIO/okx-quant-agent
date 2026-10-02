@@ -1,0 +1,8 @@
+# Normalise to LF in the repository; check out native on Windows.
+* text=auto
+
+# PowerShell scripts stay CRLF on checkout.
+*.ps1 text eol=crlf
+
+# The lockfile is generated - keep diffs out of review noise but keep it committed (P-2).
+uv.lock linguist-generated=true

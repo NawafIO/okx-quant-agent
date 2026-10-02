@@ -1,0 +1,51 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+# No credentials are available to CI. The guard job asserts that LIVE is unreachable, so a
+# change that unlocks live trading fails the build (LIVE lock Layer 4, architecture §6.4).
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install (locked)
+        # --locked fails if uv.lock is stale, so dependencies cannot drift silently.
+        # This is also finding R-5's control: ccxt never changes version implicitly.
+        run: uv sync --locked --all-extras
+
+      - name: Lint
+        run: uv run ruff check .
+
+      - name: Format check
+        run: uv run ruff format --check .
+
+      - name: Type check (strict)
+        run: uv run mypy
+
+      - name: Guard tests (ZERO-LIVE-CAPITAL)
+        # Run first and separately: if a safety guard fails, that is the headline, not a
+        # detail buried in a 70-test summary.
+        run: uv run pytest -m guard -v
+
+      - name: Full suite with coverage
+        run: uv run pytest --cov --cov-report=term-missing --cov-report=xml
+
+      - name: Assert no network test ran
+        run: uv run pytest -m network --collect-only -q

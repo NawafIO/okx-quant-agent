@@ -1,0 +1,33 @@
+# --- secrets: never commit (architecture §20.3) -----------------------------
+.env
+.env.*
+*.key
+*.pem
+secrets/
+
+# --- per-environment runtime state (architecture §20.1) ---------------------
+state/
+data/
+audit/
+logs/
+
+# --- python -----------------------------------------------------------------
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+build/
+dist/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.hypothesis/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+
+# --- os ---------------------------------------------------------------------
+Thumbs.db
+desktop.ini
