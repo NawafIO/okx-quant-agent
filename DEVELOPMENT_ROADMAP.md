@@ -46,7 +46,27 @@ LIVE credentials are provisioned, which does not happen in Phase 2 or 3. See arc
 
 ## Phase 2 - Foundation & Research (no network order path exists)
 
-### M0 - Environment & scaffold
+### M0 - Environment & scaffold - **COMPLETE 2026-10-02** (commit `32ea0da`)
+
+**Verified:** ruff clean · ruff format clean · `mypy --strict` clean (22 files) · **85 tests passing
+(31 of them guards)** · **97% branch coverage** · `scripts\verify.ps1` green end to end.
+
+**Environment as built:** Python 3.12.10 (installed via winget, satisfying P-1 - the host had no
+Python runtime at all), uv 0.12.22, `.venv` with 53 packages, `uv.lock` committed (P-2), git
+repository initialised with `.gitignore` and `.gitattributes` (P-3).
+
+| Prerequisite | Status |
+|---|---|
+| P-1 Python 3.12+ | **DONE** - 3.12.10 |
+| P-2 venv + pinned deps + committed lockfile | **DONE** - `uv.lock`, 53 packages; `uv sync --locked` in CI fails on drift (also R-5's control) |
+| P-3 git init + `.gitignore` | **DONE** |
+| P-4 secrets mechanism + redaction | **DONE** - env-var sourced, central redaction, 8 guard tests; **pre-commit secret scan still outstanding** |
+| P-5 OKX demo account + demo key | **NOT STARTED** - not needed until M6 |
+| P-6 Telegram bot + authorised user id | **NOT STARTED** - not needed until M8 |
+| P-7 advisor verdict + user authorisation | **DONE** |
+| P-8 rulings on Q-4/Q-5/Q-6 | **DONE** |
+| P-9 LLM API credential | **NOT STARTED** - not needed until M8 |
+
 **Deliverables:** P-1..P-4 satisfied; `pyproject.toml` with pinned deps; package skeleton per
 architecture §7; `contracts.py` implementing §4 in full; `phase.py` with `PHASE = 1`;
 `env/profiles.py` with the three profiles and **no default branch**; structured logging + audit
@@ -60,7 +80,11 @@ chain skeleton (§20.2); pytest + Hypothesis + coverage + ruff + mypy (strict) w
 - Audit chain verifier confirms a 3-record chain and **detects a deliberately tampered record**.
 - Secret-redaction test: a known dummy secret cannot appear in any emitted log or audit record.
 
-**Risk:** low. **Exit:** scaffold green in CI.
+**Risk:** low. **Exit:** scaffold green in CI. **EXITED.**
+
+> **Carried forward to M1:** the pre-commit secret scan (part of P-4) is not yet installed. It is
+> listed here rather than quietly dropped. Nothing in M0 handles a real credential, so the gap is not
+> yet load-bearing - but it must close before P-5 creates the first demo key.
 
 ---
 
