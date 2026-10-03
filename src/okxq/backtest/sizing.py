@@ -71,3 +71,29 @@ class ProvisionalFixedFractionalSizer:
         if qty < spec.min_size_base:
             return SizeDecision(Decimal(0), self.leverage, "below_min_size")
         return SizeDecision(qty, self.leverage)
+
+
+@dataclass(frozen=True)
+class ProvisionalFixedNotionalSizer:
+    """Fixed notional per entry, rounded down to the lot. For cost-model checks, where a
+    per-trade result in basis points must be interpretable and ruin must be impossible."""
+
+    notional: Decimal
+    leverage: Decimal = Decimal(1)
+    sizer_id: str = "provisional-fixed-notional-v1 (NOT M5)"
+
+    def size(
+        self,
+        *,
+        equity: Decimal,
+        entry_ref: Decimal,
+        stop: Decimal,
+        side: Side,
+        spec: InstrumentSpec,
+    ) -> SizeDecision:
+        if entry_ref <= 0 or (entry_ref - stop) * side.sign <= 0:
+            return SizeDecision(Decimal(0), self.leverage, "invalid_stop_or_equity")
+        qty = round_down_to_lot(self.notional / entry_ref, spec.lot_size_base)
+        if qty < spec.min_size_base:
+            return SizeDecision(Decimal(0), self.leverage, "below_min_size")
+        return SizeDecision(qty, self.leverage)

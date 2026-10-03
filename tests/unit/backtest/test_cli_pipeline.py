@@ -94,7 +94,9 @@ def test_validate_on_an_empty_store_is_insufficient_not_a_pass(
     assert cli.main(["funding-validate", "--env", "PAPER"]) == 4
 
 
-def test_funding_pipeline_end_to_end(env: tuple[ParquetStore, Path], tmp_path: Path) -> None:
+def test_funding_pipeline_end_to_end(
+    env: tuple[ParquetStore, Path], tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     store, state = env
     populate(store)
 
@@ -147,8 +149,14 @@ def test_funding_pipeline_end_to_end(env: tuple[ParquetStore, Path], tmp_path: P
             "3",
         ]
     )
-    # Synthetic driftless walk + real costs: random entry must lose.
-    assert code == 0
+    # 86 synthetic trades cannot meet the power requirement, so the check must REFUSE to
+    # pass rather than pass vacuously - the failure mode of the first real-data run.
+    assert code == 5
+    out = capsys.readouterr().out
+    assert "[FAIL] power" in out
+    assert "[PASS] no ruin" in out
+    # The size ladder must show impact rising once the participation cap cannot bind.
+    assert "[PASS] impact is live" in out
 
 
 def test_funding_bound_command_freezes_an_adverse_bound(

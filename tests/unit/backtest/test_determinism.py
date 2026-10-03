@@ -116,7 +116,9 @@ def test_nothing_decided_before_the_cut_depends_on_data_after_it() -> None:
 #: ``canonical_json()`` deliberately, record why in the commit, then update the digest.
 #: History: dece7ca1... -> 4b1f375c... (funding-bound-v1 added a ``bound`` flag to funding
 #: events and an assumption entry; with both stripped the output hashes to dece7ca1 exactly).
-GOLDEN_DIGEST = "4b1f375cbfb064eee6e3f6782be9e2e768c7a1deb52a25cfbd86850c75bc0819"
+#: 4b1f375c... -> a6882ae7... (slip-v2: only the slippage assumption LABEL changed for this
+#: floor-only fixture; with the old label restored it hashes to 4b1f375c exactly).
+GOLDEN_DIGEST = "a6882ae717d84bca3e3b5b781d649210e35eea90275422a9f02a74920aee3782"
 
 
 def test_golden_fixture() -> None:

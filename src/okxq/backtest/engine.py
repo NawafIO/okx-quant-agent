@@ -43,6 +43,7 @@ from typing import Any, Protocol
 from okxq.backtest.history import HistoryBuffer, HistoryView
 from okxq.backtest.metrics import EquityPoint
 from okxq.backtest.sizing import Sizer, round_down_to_lot
+from okxq.backtest.spread import abdi_ranaldo_spread
 from okxq.backtest.types import (
     Action,
     BacktestConfigError,
@@ -269,10 +270,12 @@ class BacktestEngine:
 
     def _check_provenance(self, specs: Mapping[str, InstrumentSpec]) -> None:
         allowed = {Provenance.MEASURED} | ({Provenance.SYNTHETIC} if self._cfg.synthetic else set())
-        sources = [(f"spec {k}", v.provenance) for k, v in specs.items()]
-        sources.append(("fee schedule", self._cfg.fees.provenance))
-        for name, prov in sources:
-            if prov not in allowed:
+        # Fees may be a stated assumption in research; contract specs may not.
+        fee_allowed = allowed | {Provenance.UNMEASURED_ASSUMPTION}
+        sources = [(f"spec {k}", v.provenance, allowed) for k, v in specs.items()]
+        sources.append(("fee schedule", self._cfg.fees.provenance, fee_allowed))
+        for name, prov, ok in sources:
+            if prov not in ok:
                 raise BacktestConfigError(
                     f"{name} has provenance {prov}; refusing to backtest on venue parameters "
                     f"that were not measured (synthetic mode: {self._cfg.synthetic})"
@@ -373,8 +376,9 @@ class BacktestEngine:
         c = self._cfg
         return {
             "sizer": self._sizer.sizer_id,
-            "slippage": f"{c.slippage.assumption_id} k_vol={c.slippage.k_vol} "
-            f"k_impact={c.slippage.k_impact} lookback={c.slippage.vol_lookback}",
+            "slippage": f"{c.slippage.assumption_id} y_impact={c.slippage.y_impact} "
+            f"vol_lookback={c.slippage.vol_lookback} "
+            f"spread_lookback={c.slippage.spread_lookback}",
             "fees": f"maker={c.fees.maker} taker={c.fees.taker} ({c.fees.provenance})",
             "stress": f"fees={c.stress.fees} slippage={c.stress.slippage} "
             f"funding_paid={c.stress.funding_paid} funding_received={c.stress.funding_received}",
@@ -535,7 +539,8 @@ class BacktestEngine:
     def _slip(self, st: _Inst, price: Decimal, qty: Decimal) -> Decimal:
         """Adverse price offset for a taker fill at ``st.idx``, from data closed before it."""
         m = self._cfg.slippage
-        closes = st.series.close[max(0, st.idx - m.vol_lookback - 1) : st.idx]
+        s, i = st.series, st.idx
+        closes = s.close[max(0, i - m.vol_lookback - 1) : i]
         rets = [math.log(float(b) / float(a)) for a, b in itertools.pairwise(closes)]
         if len(rets) >= 2:
             mu = math.fsum(rets) / len(rets)
@@ -544,10 +549,18 @@ class BacktestEngine:
             sigma = 0.0
         prev_vol = self._prev_volume(st)
         participation = float(qty / prev_vol) if prev_vol > 0 else 1.0
-        raw = price * (
-            m.k_vol * Decimal(repr(sigma)) + m.k_impact * Decimal(repr(math.sqrt(participation)))
-        )
+        impact = price * m.y_impact * Decimal(repr(sigma * math.sqrt(participation)))
         tick = st.spec.tick_size
+        half_spread = ZERO
+        if m.spread_lookback > 0:
+            lo = max(0, i - m.spread_lookback)
+            rel = abdi_ranaldo_spread(
+                [float(x) for x in s.high[lo:i]],
+                [float(x) for x in s.low[lo:i]],
+                [float(x) for x in s.close[lo:i]],
+            )
+            half_spread = price * Decimal(repr(rel / 2))
+        raw = max(tick, half_spread) + impact
         ticks = max(ONE, (raw / tick).to_integral_value(rounding=ROUND_CEILING))
         return ticks * tick * self._cfg.stress.slippage
 

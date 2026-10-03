@@ -23,6 +23,9 @@ class Provenance(StrEnum):
     """Where a venue parameter came from."""
 
     MEASURED = "MEASURED"  # read from the venue, dated, recorded in VENUE_FACTS
+    #: Fees only: a stated, unmeasured assumption (e.g. a conservative spot-schedule rate or
+    #: a low sensitivity). Research may use it; a PROMOTION decision may not (D1/slip ruling).
+    UNMEASURED_ASSUMPTION = "UNMEASURED_ASSUMPTION"
     SYNTHETIC = "SYNTHETIC"  # test fixture; refused unless the engine runs in synthetic mode
     UNMEASURED = "UNMEASURED"  # a placeholder; always refused
 
@@ -62,18 +65,23 @@ class FeeSchedule:
 
 @dataclass(frozen=True)
 class SlippageModel:
-    """Volatility- and size-scaled slippage with a one-tick floor (architecture §11.2).
+    """slip-v2 (Chief Advisor ruling 2026-10-03), per side, rounded UP to the tick::
 
-    ``slip = max(1 tick, price * (k_vol * sigma + k_impact * sqrt(participation)))`` where
-    ``sigma`` is the sample std of the last ``vol_lookback`` close-to-close log returns and
-    ``participation`` is order size over the PREVIOUS bar's base volume - both known before
-    the fill, so the engine itself holds no look-ahead. The square-root impact form is an
-    assumption, recorded under ``assumption_id`` for reconciliation against PAPER fills (M7).
+        slip = max(1 tick, half_spread) + price * y_impact * sigma * sqrt(qty / V_prev)
+
+    * ``sigma``: sample std of the last ``vol_lookback`` close-to-close log returns;
+    * ``V_prev``: the PREVIOUS bar's base volume (square-root impact; scale-consistent across
+      bar frequencies because sigma and V are measured on the same bar);
+    * ``half_spread``: half the Abdi-Ranaldo relative spread over the last
+      ``spread_lookback`` closed bars x price (0 disables it - synthetic tests only).
+
+    Everything is computed from bars closed before the fill. ``y_impact = 1`` is an
+    UNCALIBRATED literature prior; G-9 doubles the whole term and M7 reconciles it.
     """
 
-    k_vol: Decimal
-    k_impact: Decimal
+    y_impact: Decimal
     vol_lookback: int
+    spread_lookback: int
     assumption_id: str
 
 

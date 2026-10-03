@@ -36,7 +36,7 @@ FEES = FeeSchedule(
     maker=Decimal("0.0002"), taker=Decimal("0.0005"), provenance=Provenance.SYNTHETIC
 )
 #: Coefficients zero: slippage is exactly the one-tick floor, so fixtures are hand-checkable.
-FLOOR_SLIPPAGE = SlippageModel(Decimal(0), Decimal(0), 20, "test-floor-only")
+FLOOR_SLIPPAGE = SlippageModel(Decimal(0), 20, 0, "test-floor-only")
 
 
 def ts(i: int) -> int:
