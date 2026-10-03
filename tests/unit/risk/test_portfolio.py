@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+import sqlite3
 from dataclasses import replace
 from decimal import Decimal
 from pathlib import Path
@@ -9,6 +11,7 @@ from typing import Any
 
 import pytest
 
+from okxq.audit.chain import AuditChain, read_chain
 from okxq.risk.portfolio import (
     DAY_MS,
     HOUR_MS,
@@ -112,18 +115,6 @@ def test_double_open_and_bad_close_price_raise() -> None:
 
 # --- persistence ---------------------------------------------------------------------------
 
-
-class Audit:
-    def __init__(self, fail: bool = False) -> None:
-        self.records: list[tuple[str, dict[str, Any]]] = []
-        self.fail = fail
-
-    def append(self, kind: str, payload: dict[str, Any]) -> None:
-        if self.fail:
-            raise OSError("disk full")
-        self.records.append((kind, payload))
-
-
 EVENTS = [
     Init(T0, D(10_000)),
     opened(),
@@ -134,40 +125,86 @@ EVENTS = [
 ]
 
 
+def store(tmp_path: Path) -> PortfolioStore:
+    return PortfolioStore("PAPER", tmp_path / "p.db", tmp_path / "audit.jsonl")
+
+
 def test_replay_reproduces_state_bit_for_bit_and_mirrors_to_the_audit_chain(
     tmp_path: Path,
 ) -> None:
-    audit = Audit()
-    store = PortfolioStore("PAPER", tmp_path / "p.db", audit)
-    assert store.load() is None  # no state: the engine will REJECT (no HWM, never reset)
+    st = store(tmp_path)
+    assert st.load() is None  # no state: the engine will REJECT (no HWM, never reset)
     live = None
     for e in EVENTS:
-        live = store.append(e)
-    replayed = PortfolioStore("PAPER", tmp_path / "p.db", Audit()).load()
-    assert replayed == live
-    assert [k for k, _ in audit.records] == ["portfolio_event"] * len(EVENTS)
+        live = st.append(e)
+    assert store(tmp_path).load() == live
+    kinds = [r.kind for r in read_chain(tmp_path / "audit.jsonl")]
+    assert kinds == ["portfolio_event"] * len(EVENTS)
     assert all(decode(encode(e)) == e for e in EVENTS)
 
 
-def test_an_audit_failure_rolls_the_event_back(tmp_path: Path) -> None:
-    store = PortfolioStore("PAPER", tmp_path / "p.db", Audit())
-    store.append(EVENTS[0])
-    broken = PortfolioStore("PAPER", tmp_path / "p.db", Audit(fail=True))
-    with pytest.raises(OSError):
-        broken.append(EVENTS[1])
-    assert store.load() == initial("PAPER", EVENTS[0])  # Opened was not persisted
+def test_an_audit_failure_rolls_the_event_back(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    st = store(tmp_path)
+    st.append(EVENTS[0])
+
+    def disk_full(self: object, kind: str, payload: dict[str, Any]) -> None:
+        raise OSError("disk full")
+
+    monkeypatch.setattr(AuditChain, "append", disk_full)
+    with pytest.raises(OSError, match="disk full"):
+        st.append(EVENTS[1])
+    monkeypatch.undo()
+    assert st.load() == initial("PAPER", EVENTS[0])  # the Opened row was rolled back
+
+
+def test_a_lost_database_never_resets_the_baselines(tmp_path: Path) -> None:
+    """Closing audit #2: deleting the database next to a chain that holds events refuses,
+    rather than starting a fresh Init with HWM = day-open = current equity."""
+    st = store(tmp_path)
+    for e in EVENTS[:3]:
+        st.append(e)
+    (tmp_path / "p.db").unlink()
+    fresh = store(tmp_path)
+    with pytest.raises(PortfolioError, match="disagree"):
+        fresh.load()
+    with pytest.raises(PortfolioError, match="disagree"):
+        fresh.append(Init(T0 + 10, D(9_000)))
+
+
+def test_an_audit_record_without_its_database_row_refuses(tmp_path: Path) -> None:
+    """Closing audit #14: a commit that failed after its audit record was written."""
+    st = store(tmp_path)
+    st.append(EVENTS[0])
+    AuditChain(tmp_path / "audit.jsonl").append("portfolio_event", encode(EVENTS[1]))
+    with pytest.raises(PortfolioError, match="disagree"):
+        st.load()
 
 
 def test_the_log_must_start_with_init(tmp_path: Path) -> None:
-    store = PortfolioStore("PAPER", tmp_path / "p.db", Audit())
+    st = store(tmp_path)
     with pytest.raises(PortfolioError, match="first event must be Init"):
-        store.append(EVENTS[1])
-    import json
-    import sqlite3
-
+        st.append(EVENTS[1])
+    body = json.dumps(encode(EVENTS[1]), sort_keys=True)
     with sqlite3.connect(tmp_path / "p.db") as con:
-        con.execute(
-            "INSERT INTO portfolio_events (body) VALUES (?)", (json.dumps(encode(EVENTS[1])),)
-        )
+        con.execute("INSERT INTO portfolio_events (body) VALUES (?)", (body,))
+    AuditChain(tmp_path / "audit.jsonl").append("portfolio_event", json.loads(body))
     with pytest.raises(PortfolioError, match="does not start with Init"):
-        store.load()
+        st.load()
+
+
+@pytest.mark.parametrize(
+    "event",
+    [
+        replace(opened(), fee=D("NaN")),
+        Closed(T0 + 2, BTC, D(100), D("Infinity")),
+        FundingAccrued(T0 + 2, BTC, D("sNaN")),
+    ],
+    ids=["open-fee", "close-fee", "funding"],
+)
+def test_non_finite_fees_and_funding_are_refused(event: Any) -> None:
+    """Closing audit #3: one NaN in realised P&L would stop every halt from ever firing."""
+    s = start() if isinstance(event, Opened) else apply(start(), opened())
+    with pytest.raises(PortfolioError, match="finite"):
+        apply(s, event)

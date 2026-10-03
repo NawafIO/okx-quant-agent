@@ -19,8 +19,9 @@ from okxq.risk.policy import (
 
 pytestmark = pytest.mark.guard
 
-#: SHA-256 of RiskPolicy().canonical_json(), frozen at M5 (2026-10-03).
-PINNED_SHA256 = "b7bcb28b382b82d2f24d39a4871ede355d759907ab0a079729ff83f739a5a376"
+#: SHA-256 of RiskPolicy().canonical_json(), frozen at M5 (2026-10-03); re-pinned at the M5
+#: closing audit to add mark_stale_s (finding #5: the stale-mark budget was a caller argument).
+PINNED_SHA256 = "b4e030fc6e076dda80e7a828c9191f590d3315156d3534e9c3b57ab1644ab261"
 
 
 def test_risk_policy_matches_the_frozen_pin() -> None:

@@ -297,3 +297,10 @@ def test_extreme_magnitudes_never_raise_and_never_break_the_budget(
         assert p.risk_pct_of_equity <= P.max_risk_per_trade
     else:
         assert p.qty_base == 0
+
+
+@pytest.mark.parametrize("ts", [10**20, 2**62])
+def test_an_out_of_range_cycle_time_never_raises(ts: int) -> None:
+    """Closing audit #11: datetime overflow in the expiry must not escape evaluate."""
+    p = run(snap=snap(cycle_ts_ms=ts))
+    assert p.verdict == "REJECTED" and p.expires_at == signal().ts

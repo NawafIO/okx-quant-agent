@@ -196,3 +196,28 @@ def test_nothing_outside_the_kill_switch_references_disarm() -> None:
             ):
                 offenders.append(f"{path.relative_to(OKXQ)}:{n.lineno}")
     assert offenders == []
+
+
+# --- one ingest path (closing audit #4) ------------------------------------------------------
+
+
+def test_only_the_store_applies_events_and_only_cycle_ingests() -> None:
+    """Nothing persists or applies a portfolio event except store.py (called through
+    cycle.ingest, which latches halts). A name-level tripwire: it cannot see a store passed
+    in as an untyped object, which is why ``ingest`` is the documented single entry."""
+    offenders = []
+    for path in sorted(OKXQ.rglob("*.py")):
+        rel = path.relative_to(OKXQ).as_posix()
+        for n in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            if (
+                isinstance(n, ast.ImportFrom)
+                and n.module == "okxq.risk.portfolio"
+                and any(a.name == "apply" for a in n.names)
+                and rel != "risk/store.py"
+            ):
+                offenders.append(f"{rel}: imports apply")
+            if isinstance(n, ast.Name | ast.Attribute):
+                name = getattr(n, "id", None) or getattr(n, "attr", None)
+                if name == "PortfolioStore" and rel != "risk/store.py":
+                    offenders.append(f"{rel}: references PortfolioStore")
+    assert offenders == []

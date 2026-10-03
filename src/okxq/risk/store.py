@@ -1,7 +1,12 @@
 """Portfolio persistence: SQLite, one transaction per event, mirrored to the audit chain
 (architecture §14). State is never stored - it is REPLAYED from the event log through the
-pure reducer, so a restart reproduces it bit-for-bit, and a missing database means no state,
-which the engine rejects (no high-water mark, no day-open equity: never reset)."""
+pure reducer, so a restart reproduces it bit-for-bit.
+
+The database and the audit chain must AGREE, event for event (closing audit #2, #14). A lost
+database next to a chain that holds portfolio events, a commit that failed after its audit
+record was written, or any edit, makes ``load`` and ``append`` refuse with PortfolioError -
+so the engine has no state and REJECTS. The high-water mark, day-open equity and loss streak
+are therefore never silently reset by starting a fresh ``Init``."""
 
 from __future__ import annotations
 
@@ -12,8 +17,8 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
+from okxq.audit.chain import AuditChain, read_chain, verify_chain
 from okxq.contracts import Env
-from okxq.risk.cycle import Audit
 from okxq.risk.portfolio import (
     Closed,
     Event,
@@ -51,11 +56,14 @@ def decode(raw: dict[str, Any]) -> Event:
     return event
 
 
+KIND = "portfolio_event"
+
+
 class PortfolioStore:
-    def __init__(self, env: Env, db: Path, audit: Audit) -> None:
+    def __init__(self, env: Env, db: Path, audit_log: Path) -> None:
         self.env = env
         self.db = db
-        self.audit = audit
+        self.audit_log = audit_log
         db.parent.mkdir(parents=True, exist_ok=True)
         with sqlite3.connect(db) as con:
             con.execute(
@@ -63,10 +71,22 @@ class PortfolioStore:
                 "(seq INTEGER PRIMARY KEY, body TEXT NOT NULL)"
             )
 
+    def _audited(self) -> list[dict[str, Any]]:
+        if not self.audit_log.exists():
+            return []
+        verify_chain(self.audit_log)
+        return [r.payload for r in read_chain(self.audit_log) if r.kind == KIND]
+
     def _fold(self, rows: list[tuple[int, str]]) -> PortfolioState | None:
+        bodies = [json.loads(body) for _, body in rows]
+        if bodies != self._audited():
+            raise PortfolioError(
+                "portfolio database and audit chain disagree - refusing to rebuild state "
+                "(a lost or edited database would otherwise reset the HWM and day basis)"
+            )
         state: PortfolioState | None = None
-        for _, body in rows:
-            event = decode(json.loads(body))
+        for raw in bodies:
+            event = decode(raw)
             if state is None:
                 if not isinstance(event, Init):
                     raise PortfolioError("event log does not start with Init")
@@ -81,8 +101,8 @@ class PortfolioStore:
         return self._fold(rows)
 
     def append(self, event: Event) -> PortfolioState:
-        """Validate against the replayed state, then write the event and its audit record in
-        ONE transaction: if the audit append fails, the event is rolled back."""
+        """Reconcile, validate against the replayed state, then write the event and its
+        audit record in ONE transaction: if the audit append fails, the event rolls back."""
         con = sqlite3.connect(self.db)
         try:
             con.execute("BEGIN IMMEDIATE")
@@ -96,7 +116,7 @@ class PortfolioStore:
                 new = apply(state, event)
             body = json.dumps(encode(event), sort_keys=True)
             con.execute("INSERT INTO portfolio_events (body) VALUES (?)", (body,))
-            self.audit.append("portfolio_event", json.loads(body))
+            AuditChain(self.audit_log).append(KIND, json.loads(body))
             con.commit()
             return new
         except BaseException:

@@ -2,12 +2,26 @@
 
 from __future__ import annotations
 
-from decimal import Decimal
+from decimal import (
+    ROUND_FLOOR,
+    Context,
+    Decimal,
+    DivisionByZero,
+    InvalidOperation,
+    Overflow,
+)
 
-#: Precision 50 (the V-12 lesson). The default context traps InvalidOperation,
-#: DivisionByZero and Overflow; the engine runs every calculation under
-#: ``localcontext(prec=PRECISION)``, so any of them raises and fails the check.
+#: Precision 50 (the V-12 lesson).
 PRECISION = 50
+
+
+def risk_context() -> Context:
+    """A FRESH context - never the caller's traps or rounding (closing audit #9): invalid
+    operations, division by zero and overflow raise; rounding is toward -infinity, so a
+    budget or quantity is never rounded up."""
+    return Context(
+        prec=PRECISION, rounding=ROUND_FLOOR, traps=[InvalidOperation, DivisionByZero, Overflow]
+    )
 
 
 def finite(x: object) -> Decimal | None:

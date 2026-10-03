@@ -132,6 +132,12 @@ def _positive(name: str, v: Decimal) -> Decimal:
     return v
 
 
+def _finite(name: str, v: Decimal) -> Decimal:
+    if not (isinstance(v, Decimal) and v.is_finite()):
+        raise PortfolioError(f"{name} must be a finite Decimal, got {v!r}")
+    return v
+
+
 def _update(state: PortfolioState, symbol: str, new: Callable[[Held], Held]) -> PortfolioState:
     if state.held(symbol) is None:
         raise PortfolioError(f"{symbol} is not held")
@@ -174,7 +180,7 @@ def apply(state: PortfolioState, event: Event) -> PortfolioState:
         recent = tuple(t for t in s.entry_times_ms if t > event.ts_ms - HOUR_MS)
         s = replace(
             s,
-            realised=s.realised - event.fee,
+            realised=s.realised - _finite("fee", event.fee),
             positions=tuple(sorted((*s.positions, h), key=lambda x: x.symbol)),
             entry_times_ms=(*recent, event.ts_ms),
         )
@@ -183,7 +189,7 @@ def apply(state: PortfolioState, event: Event) -> PortfolioState:
         if closing is None:
             raise PortfolioError(f"{event.symbol} is not held")
         price = _positive("price", event.price)
-        pnl = replace(closing, mark=price).unrealised - event.fee
+        pnl = replace(closing, mark=price).unrealised - _finite("fee", event.fee)
         loss = pnl < 0
         s = replace(
             s,
@@ -202,5 +208,5 @@ def apply(state: PortfolioState, event: Event) -> PortfolioState:
     else:
         if s.held(event.symbol) is None:
             raise PortfolioError(f"{event.symbol} is not held")
-        s = replace(s, realised=s.realised + event.amount)
+        s = replace(s, realised=s.realised + _finite("amount", event.amount))
     return replace(s, high_water_mark=max(s.high_water_mark, s.equity))

@@ -158,13 +158,14 @@ def test_rc07_unmapped_symbol_rejects() -> None:
     assert check(p, "RC-07")[0] is False
 
 
-def test_open_risk_default_deny_and_floor() -> None:
+def test_open_risk_default_deny_and_crossed_stops() -> None:
     assert open_risk("garbage", P) is None
     assert open_risk(("x",), P) is None
     assert open_risk((position(side="FLAT"),), P) is None  # type: ignore[arg-type]
     assert open_risk((position(qty_base=D("NaN")),), P) is None
     assert open_risk((position(symbol="NEW-USDT-SWAP"),), P) is None
-    assert open_risk((position(mark=D(80)),), P) == 0  # a stop already through: floored at 0
+    assert open_risk((position(mark=D(80)),), P) is None  # stop crossed: incident (#6)
+    assert open_risk((position(mark=D(90)),), P) == 0  # exactly at the stop
     short = position(side="SHORT", stop=D(110), mark=D(100), qty_base=D(2))
     assert open_risk((short,), P) == D(20)
 
@@ -326,3 +327,9 @@ def test_quantity_is_floored_to_the_lot_on_an_inexact_division() -> None:
     assert p.verdict == "APPROVED"
     assert p.qty_base == D("16.6666")
     assert p.risk_amount == D("49.9998") <= D(50)
+
+
+def test_a_held_position_beyond_its_stop_fails_heat_and_cluster_checks() -> None:
+    crossed = snap(positions=(position(mark=D(80)),))  # LONG stop 90, mark 80
+    failed_ids = failed(run(snap=crossed))
+    assert "RC-06" in failed_ids and "RC-07" in failed_ids

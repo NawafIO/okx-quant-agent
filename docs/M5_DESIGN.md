@@ -1,6 +1,6 @@
 # M5 design: Risk Engine + Portfolio Manager + Kill Switch (PLAN, for Chief Advisor review)
 
-Status: **BUILT** (§13), awaiting the Chief Advisor closing audit. The plan (§1–§12) was signed off at checkpoint 1 (BUILD). Scope: roadmap M5, architecture §13, §14 and §19.3. Pure, offline, no network, no credentials. Phase stays 2; no LIVE path is touched.
+Status: **BUILT; closing audit FIX THEN CLOSE → all fixes applied (§14).** Pending: the owner runs `scripts/verify.ps1` on Windows (finding #7). Scope: roadmap M5, architecture §13, §14 and §19.3. Pure, offline, no network, no credentials. Phase stays 2; no LIVE path is touched.
 
 ## 0. Constraints carried in
 
@@ -302,3 +302,46 @@ The conclusion stands for the correct reason: flooring to `lot_size_base` is **i
 - Re-checking the switch at the execution entry.
 - Measuring `max_size_base` and the staleness grace.
 - Re-running a candidate under the risk-engine configuration before any holdout read (Q4).
+
+## 14. Closing audit (FIX THEN CLOSE): fixes and records
+
+The engine core was confirmed sound: no path returns APPROVED with a failed, missing or exception-replaced check, and the `TradeProposal` validator independently refuses that shape. The defects were around the halt latch and persistence.
+
+### Blocking findings, all fixed and mutation-checked
+
+1. **A halt could be lost while the switch merely read engaged.**
+   - `_latch` now writes an ENGAGE unless the CHAIN's latest switch record already is one (`KillSwitch.latched()`), not whenever `engaged()` happens to read True (sentinel, unreadable cache).
+   - `on_tick` turns a seen `KILL` sentinel into a durable ENGAGE, so deleting the file never disarms. That is tested end to end with the real switch.
+   - Mutant (latch on `engaged()`): 3 tests fail.
+2. **A lost database reset the baselines.**
+   - `PortfolioStore` now reconciles the database against the audit chain's `portfolio_event` records on every load and append. A lost database, an edited one, or a commit that failed after its audit record was written makes it **refuse** (no state, so the engine REJECTs). It never re-`Init`s at current equity.
+   - Mutant (skip reconciliation): 2 tests fail.
+3. **A NaN fee could stop every halt.**
+   - Opened/Closed fees and FundingAccrued amounts must be finite.
+   - A non-finite or non-positive equity basis is itself a halt.
+4. **Persisting and latching were separate paths.**
+   - `cycle.ingest(store, event, now, switch)` is the single entry: it persists, then latches.
+   - Guard: only `store.py` imports `apply` or references `PortfolioStore`. This is a name-level tripwire; it cannot see a store passed around untyped, which is recorded.
+
+### Should-fix findings, all applied
+
+5. **The stale-mark budget is in the pinned policy** (`mark_stale_s = 3720`, one closed 1h bar plus grace). It is no longer a caller argument. **Policy re-pinned** to `b4e030fc…` (guard updated with the reason).
+6. **A held mark beyond its stop is an incident.**
+   - `open_risk` returns None, so RC-06 and RC-07 fail.
+   - `halt_triggers` adds "stop crossed".
+   - A mark exactly at the stop is not crossed.
+7. **Windows.** No directory fsync on Windows (`FSYNC_DIRS`), because `os.open` on a directory raises there. Tested with the flag off and `os.open` failing. **Linux CI cannot prove Windows behaviour. "Full green" for M5 needs the owner to run `scripts/verify.ps1` on Windows.**
+8. **Recorded for M6.**
+   - The validator checks *consistency*, not *authenticity*. Fabricated all-pass checks, `__dict__` writes and unpickling are beyond it.
+   - The M6 execution entry must re-validate with `TradeProposal.model_validate(p.model_dump())` and verify the HMAC.
+   - The validator in `contracts.py` sits outside the risk coverage gate.
+9. **A FRESH Decimal context** (`num.risk_context()`): precision 50, ROUND_FLOOR, traps on InvalidOperation/DivisionByZero/Overflow. Never the caller's context. Used by the engine and by `halt_triggers`.
+11. **An out-of-range cycle time** no longer escapes `evaluate`: the proposal is already expired and REJECTED.
+
+### Notes recorded
+
+- **Liquidation ignores fees** (a fee-adjusted liquidation sits slightly closer to entry). The buffer (1.5 × stop distance) is the margin for that.
+- **The day-open basis** is the conservative equity at the **last event before the UTC midnight boundary**, applied at the first event at or after 00:00:00.000. It is not equity sampled at exactly 00:00, so any move between those two events counts toward the new day.
+- **The operator CLI that calls `disarm` does not exist yet.** When it is built (M6/M8), the guard must allow-list exactly that module.
+- **`engaged()` re-verifies the whole audit chain on every call.** If proposals share that file, reads get slower as it grows. M6 should give the kill switch and proposals separate chains, or verify incrementally.
+- **SZ-4 `qty >= (lot or ZERO) > 0`** was confirmed correct by the advisor.

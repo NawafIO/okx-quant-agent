@@ -32,8 +32,9 @@ class Ctx:
 
 
 def open_risk(positions: object, p: RiskPolicy, cluster: str | None = None) -> Decimal | None:
-    """Mark-to-stop risk of open positions, each floored at 0; None if any is malformed or
-    (when a cluster is asked for) unmapped."""
+    """Mark-to-stop risk of open positions; None if any is malformed, unmapped, or has its
+    mark BEYOND its stop - a protective stop that failed is an incident (§15.3), never zero
+    risk that frees heat (closing audit #6)."""
     if not isinstance(positions, tuple):
         return None
     total = ZERO
@@ -49,7 +50,9 @@ def open_risk(positions: object, p: RiskPolicy, cluster: str | None = None) -> D
         if cluster is not None and mapped != cluster:
             continue
         move = (mk - st) if pos.side == "LONG" else (st - mk)
-        total += max(ZERO, q * move)
+        if move < 0:
+            return None
+        total += q * move
     return total
 
 

@@ -106,6 +106,10 @@ class RiskPolicy:
     liq_buffer_stop_multiple: Decimal = Decimal("1.5")  # liq distance >= 1.5 x stop distance
     margin_headroom: Decimal = Decimal("0.25")  # >= 25% of free margin left after the order
     staleness_grace_s: int = 120  # UNMEASURED - M6 measures publication delay and re-pins
+    # A HELD position whose mark is older than this halts (dead feed, §19.3). One closed 1h
+    # bar plus the grace: M6 marks at least once per closed bar. Pinned, never a caller
+    # argument (M5 closing audit #5).
+    mark_stale_s: int = 3720
     max_entries_per_hour: int = 3
     loss_cooldown_losses: int = 3
     loss_cooldown_s: int = 86_400
@@ -135,7 +139,7 @@ class RiskPolicy:
 
 
 #: SHA-256 of RiskPolicy().canonical_json().
-PINNED_RISK_POLICY_SHA256 = "b7bcb28b382b82d2f24d39a4871ede355d759907ab0a079729ff83f739a5a376"
+PINNED_RISK_POLICY_SHA256 = "b4e030fc6e076dda80e7a828c9191f590d3315156d3534e9c3b57ab1644ab261"
 
 
 FROZEN_RISK_POLICY = RiskPolicy()

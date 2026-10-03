@@ -18,7 +18,7 @@ from okxq.contracts import RiskCheckResult, Signal, TradeProposal
 from okxq.risk import policy as pol
 from okxq.risk.checks import BATTERY, Ctx
 from okxq.risk.inputs import MarketFacts, PortfolioSnapshot, QualInputs
-from okxq.risk.num import PRECISION, count, positive
+from okxq.risk.num import count, positive, risk_context
 from okxq.risk.qualitative import Gate, gate
 from okxq.risk.sizing import ZERO, Sized, result, size
 
@@ -43,7 +43,10 @@ def _expiry(signal: Signal, snap: PortfolioSnapshot, ttl_s: int) -> datetime:
     now = count(snap.cycle_ts_ms)
     if now is None:
         return signal.ts
-    return datetime.fromtimestamp(now / 1000, tz=UTC) + timedelta(seconds=ttl_s)
+    try:
+        return datetime.fromtimestamp(now / 1000, tz=UTC) + timedelta(seconds=ttl_s)
+    except (OverflowError, ValueError, OSError):  # out of datetime's range
+        return signal.ts
 
 
 def evaluate(
@@ -51,7 +54,7 @@ def evaluate(
 ) -> TradeProposal:
     p = pol.FROZEN_RISK_POLICY
     intact = p.sha256() == pol.PINNED_RISK_POLICY_SHA256
-    with localcontext(prec=PRECISION):
+    with localcontext(risk_context()):
         try:
             g = gate(signal, snap, qual, p)
         except Exception as exc:  # malformed qualitative input -> RC-16 fails

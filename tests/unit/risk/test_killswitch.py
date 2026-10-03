@@ -169,3 +169,28 @@ def test_an_engage_that_cannot_be_persisted_raises(tmp_path: Path) -> None:
     with pytest.raises(KillSwitchError, match="could not be persisted"):
         ks.engage("t", {})
     assert ks.engaged() is True
+
+
+def test_latched_is_true_only_for_a_durable_engage(ks: KillSwitch, tty: None) -> None:
+    assert ks.latched() is False  # nothing recorded
+    ks.engage("t", {})
+    assert ks.latched() is True
+    ks.disarm("op", "DISARM PAPER", "r")
+    assert ks.latched() is False
+    ks.audit_log.write_text("garbage\n")
+    assert ks.latched() is False  # on any doubt: not latched, so a halt WRITES its engage
+    assert ks.engaged() is True
+
+
+def test_no_directory_fsync_on_windows(ks: KillSwitch, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Closing audit #7: os.open on a directory raises on Windows; the switch must still
+    write. (Linux CI cannot prove Windows behaviour - the owner runs verify.ps1 there.)"""
+    from okxq.risk import killswitch
+
+    def no_dir_open(*_: object) -> int:
+        raise PermissionError("directory open (Windows)")
+
+    monkeypatch.setattr(killswitch, "FSYNC_DIRS", False)
+    monkeypatch.setattr(os, "open", no_dir_open)
+    ks.engage("t", {})
+    assert ks.latched() is True and json.loads(ks.cache.read_text())["engaged"] is True

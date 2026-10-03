@@ -39,6 +39,10 @@ from okxq.errors import SafetyError
 ENGAGE = "killswitch_engage"
 DISARM = "killswitch_disarm"
 
+#: Directory fsync after the atomic rename is POSIX-only: on Windows ``os.open`` on a
+#: directory raises PermissionError (closing audit #7). NTFS journals the rename itself.
+FSYNC_DIRS = os.name != "nt"
+
 
 class KillSwitchError(SafetyError):
     """The switch could not be written, or a disarm was refused."""
@@ -53,7 +57,7 @@ class KillSwitch:
 
     # -- reading: every failure reads ENGAGED -------------------------------------------
 
-    def _sentinel_present(self) -> bool:
+    def sentinel_present(self) -> bool:
         try:
             os.stat(self.sentinel)
         except FileNotFoundError:
@@ -64,7 +68,7 @@ class KillSwitch:
 
     def engaged(self) -> bool:
         try:
-            if self._sentinel_present():
+            if self.sentinel_present():
                 return True
             verify_chain(self.audit_log)
             records = read_chain(self.audit_log)
@@ -84,6 +88,17 @@ class KillSwitch:
         except Exception:
             return True
 
+    def latched(self) -> bool:
+        """Whether an ENGAGE is DURABLY recorded: the verified chain's latest kill-switch
+        record is an ENGAGE. Unlike ``engaged()`` this is False on any doubt, so a halt that
+        meets an unreadable switch still writes its ENGAGE (closing audit #1)."""
+        try:
+            verify_chain(self.audit_log)
+            switch = [r for r in read_chain(self.audit_log) if r.kind in (ENGAGE, DISARM)]
+            return bool(switch) and switch[-1].kind == ENGAGE
+        except Exception:
+            return False
+
     # -- writing ------------------------------------------------------------------------
 
     def _write_cache(self, engaged: bool, seq: int, digest: str) -> None:
@@ -95,11 +110,12 @@ class KillSwitch:
             f.flush()
             os.fsync(f.fileno())
         os.replace(tmp, self.cache)
-        fd = os.open(self.cache.parent, os.O_RDONLY)
-        try:
-            os.fsync(fd)
-        finally:
-            os.close(fd)
+        if FSYNC_DIRS:
+            fd = os.open(self.cache.parent, os.O_RDONLY)
+            try:
+                os.fsync(fd)
+            finally:
+                os.close(fd)
 
     def engage(self, trigger: str, detail: dict[str, Any]) -> None:
         """Audited and persisted. Raises KillSwitchError if it cannot be written - the
@@ -119,7 +135,7 @@ class KillSwitch:
             raise KillSwitchError("disarm requires an interactive terminal")
         if typed != f"DISARM {self.env}":
             raise KillSwitchError(f"confirmation must be exactly 'DISARM {self.env}'")
-        if self._sentinel_present():
+        if self.sentinel_present():
             raise KillSwitchError(f"remove the sentinel {self.sentinel} first")
         if not operator.strip() or not reason.strip():
             raise KillSwitchError("operator and reason are required")
