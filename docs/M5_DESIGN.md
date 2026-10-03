@@ -1,6 +1,6 @@
 # M5 design: Risk Engine + Portfolio Manager + Kill Switch (PLAN, for Chief Advisor review)
 
-Status: **PLAN, revision 1** after Chief Advisor checkpoint 1 (PROCEED WITH CHANGES; §11 lists every change). Nothing built yet. Scope: roadmap M5, architecture §13, §14 and §19.3. Pure, offline, no network, no credentials. Phase stays 2; no LIVE path is touched.
+Status: **BUILT** (§13), awaiting the Chief Advisor closing audit. The plan (§1–§12) was signed off at checkpoint 1 (BUILD). Scope: roadmap M5, architecture §13, §14 and §19.3. Pure, offline, no network, no credentials. Phase stays 2; no LIVE path is touched.
 
 ## 0. Constraints carried in
 
@@ -253,3 +253,52 @@ The conclusion stands for the correct reason: flooring to `lot_size_base` is **i
    - `disarm` refuses while the `KILL` sentinel exists.
 4. **More validation-skipping routes banned on contracts:** pydantic's deprecated `.copy(update=)` and `object.__setattr__`. The `TradeProposal` validator **imports** the pinned policy limits rather than repeating the numbers.
 5. **The coverage invocation is pinned.** A guard asserts that CI and `scripts/verify.ps1` run the risk tests with `--cov-config=.coveragerc-risk --cov-branch --cov-fail-under=100`.
+
+## 13. Build record
+
+| Commit | Content |
+|---|---|
+| 3313e1d | `RiskPolicy` pinned (`b7bcb28b…`): cluster map and required-check set inside the hash; guard test |
+| df2bb80 | **Contract:** `TradeProposal` verdict must agree with its checks; bypass-route ban (own commit, B-3) |
+| 1ffda93 | Pure engine: sizing, RC-01..RC-16 plus SZ-1..4, qualitative gate, `evaluate` |
+| a7947ad | Portfolio reducer and SQLite/audit persistence, audit-derived kill switch, latching cycle |
+| 2074073, 0baae43 | Acceptance enforcement: pinned no-exclusion coverage gate, AST guards, CI and `verify.ps1` step |
+
+### Acceptance (roadmap M5) against the evidence
+
+| Criterion | Evidence |
+|---|---|
+| 100% branch coverage on the Risk Engine | **100% of the WHOLE `okxq.risk` package**, I/O modules included: 745 statements and 166 branches. Measured under `.coveragerc-risk`, which has **no** `exclude_lines`, `partial_branches`, `partial_branches_always` or omit. The gate was shown to fail (exit 1 at 99.56%) when an untested branch was added. The planned "named I/O exclusion list" was not needed. |
+| Actual risk never exceeds the budget | Hypothesis property over equity, entry, stop distance, lot and side |
+| Qty never rounded up | The same property: (qty + lot) × dist > budget. Plus an exact inexact-division test (16.6666). Mutation-checked: ROUND_CEILING is caught |
+| qty < min_size → REJECT | Property over min_size |
+| Malformed / None / NaN / zero-stop → REJECT | Property over 11 snapshot and 9 facts fields × {None, NaN, sNaN, ±Inf, 0, −0, −1, float, str, bool}; `evaluate` never raises. Extreme magnitudes never break the budget |
+| Wrong-side stop → REJECT | The contract refuses it. The engine also REJECTs a bypassed contract (`model_construct` test) |
+| Liquidation beyond the stop, or REJECT | Property on every APPROVED proposal; RC-12f fixtures (wide stop at 3×, invalid mmr) |
+| Pass and fail fixture per RC, with observed/limit | `tests/unit/risk/test_checks.py`: every RC and SZ check, exact values |
+| No-bypass | `evaluate` has 4 parameters (signal, snap, facts, qual) and no flags; the policy is pinned and re-hashed every call; the engine iterates the pinned set, so a missing check fails (test); `BATTERY` is a read-only mapping; no environ/getenv (guard); a TradeProposal cannot be APPROVED with a failed or missing check (validator) |
+| R-4 guard | AST: no LLM-sourced field outside `qualitative.py`/`inputs.py`. Monotonicity property: qualitative input never raises qty or flips REJECT→APPROVE |
+| Kill switch engages on each trigger | Cycle tests: RC-10 at exactly 2%, RC-11 at exactly 10%, stale marks on the timer, non-positive equity, engage failure propagates |
+| Engagement survives a process restart | A fresh `subprocess` reads ENGAGED after engage and DISENGAGED only after an audited disarm |
+| Fails safe when its own state is unreadable | A fresh clone, deleted, garbage or edited cache, wrong tip hash, tampered chain, chain truncation (tip pin mutation-checked), and a sentinel `PermissionError` all read ENGAGED |
+| Daily-loss / drawdown halts at exact thresholds, UTC boundary | Halt at loss = 0.02 and dd = 0.10 exactly, not at 0.0199…; day rollover at 00:00:00.000 UTC, not at 23:59:59.999 |
+
+### Findings during the build (recorded)
+
+- **Defence in depth hid a test gap.** Rounding UP was first caught only incidentally, because SZ-4's budget check turned every rounded-up size into a REJECT, so the "never rounded up" property saw only rejections. An exact floor test now catches it directly.
+- **One kill-switch test did not discriminate.** The first truncation test passed even when the switch trusted only its cache flag, because that scenario is caught by the flag, not the tip pin. A new test exercises the tip pin specifically (mutation-checked), and the docstring now states which layer catches what.
+- **The coverage defaults hide more than pragmas.** `partial_branches_always` silently exempts constant `if True:` / `while 1:` branches. It is emptied as well.
+- **CRLF:** `.ps1` files are checked out with CRLF line endings, so the guard normalises them; it would otherwise have failed on Windows.
+- **Staleness grace is UNMEASURED** (120 s). M6 measures the venue's bar-publication delay and re-pins before RC-03 runs against a live feed.
+- **Policy deviation:** the cluster map lives inside the pinned policy (stronger) rather than in a separate `docs/risk_clusters.json`.
+
+### Carried to M6 (not built in M5, by plan)
+
+- HMAC signing (needs a secret).
+- Order-path kill actions: cancel and flatten (a `KillActions` interface).
+- Scale-outs, trailing stops, breakeven and time exits.
+- Venue reconciliation.
+- The contract-unit conversion test (§11).
+- Re-checking the switch at the execution entry.
+- Measuring `max_size_base` and the staleness grace.
+- Re-running a candidate under the risk-engine configuration before any holdout read (Q4).
