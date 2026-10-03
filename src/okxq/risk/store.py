@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from contextlib import closing
 from dataclasses import fields
 from decimal import Decimal
 from pathlib import Path
@@ -65,7 +66,10 @@ class PortfolioStore:
         self.db = db
         self.audit_log = audit_log
         db.parent.mkdir(parents=True, exist_ok=True)
-        with sqlite3.connect(db) as con:
+        # closing(): sqlite3's own context manager commits but never CLOSES, which leaves
+        # the database locked on Windows until garbage collection (found on the first real
+        # Windows run). Every connection here is closed explicitly.
+        with closing(sqlite3.connect(db)) as con, con:
             con.execute(
                 "CREATE TABLE IF NOT EXISTS portfolio_events "
                 "(seq INTEGER PRIMARY KEY, body TEXT NOT NULL)"
@@ -96,7 +100,7 @@ class PortfolioStore:
         return state
 
     def load(self) -> PortfolioState | None:
-        with sqlite3.connect(self.db) as con:
+        with closing(sqlite3.connect(self.db)) as con:
             rows = con.execute("SELECT seq, body FROM portfolio_events ORDER BY seq").fetchall()
         return self._fold(rows)
 

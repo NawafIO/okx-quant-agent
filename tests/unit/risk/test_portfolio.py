@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
+import os
 import sqlite3
 from dataclasses import replace
 from decimal import Decimal
@@ -209,3 +211,24 @@ def test_non_finite_fees_and_funding_are_refused(event: Any) -> None:
     s = start() if isinstance(event, Opened) else apply(start(), opened())
     with pytest.raises(PortfolioError, match="finite"):
         apply(s, event)
+
+
+def _open_handles(path: Path) -> int:
+    n = 0
+    for fd in os.listdir("/proc/self/fd"):
+        with contextlib.suppress(OSError):
+            n += os.readlink(f"/proc/self/fd/{fd}") == str(path)
+    return n
+
+
+@pytest.mark.skipif(not Path("/proc/self/fd").is_dir(), reason="needs /proc (Linux)")
+def test_no_store_operation_leaves_the_database_open(tmp_path: Path) -> None:
+    """A connection left to the garbage collector keeps the file LOCKED on Windows (the
+    first real Windows run failed on it). Checked without any gc.collect()."""
+    db = tmp_path / "p.db"
+    st = store(tmp_path)
+    assert _open_handles(db) == 0
+    st.append(EVENTS[0])
+    assert _open_handles(db) == 0
+    st.load()
+    assert _open_handles(db) == 0

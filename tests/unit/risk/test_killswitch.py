@@ -194,3 +194,34 @@ def test_no_directory_fsync_on_windows(ks: KillSwitch, monkeypatch: pytest.Monke
     monkeypatch.setattr(os, "open", no_dir_open)
     ks.engage("t", {})
     assert ks.latched() is True and json.loads(ks.cache.read_text())["engaged"] is True
+
+
+def test_the_directory_fsync_branch_runs_on_every_os(
+    ks: KillSwitch, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The POSIX branch, exercised with the OS calls faked, so the 100% risk-coverage gate
+    holds on Windows too (where os.open on a directory is not allowed)."""
+    from okxq.risk import killswitch
+
+    calls: list[str] = []
+    real_fsync = os.fsync
+
+    def fake_open(path: object, flags: int) -> int:
+        calls.append(f"open {path}")
+        return 987654
+
+    def fake_fsync(fd: int) -> None:
+        if fd == 987654:
+            calls.append("fsync dir")
+        else:
+            real_fsync(fd)
+
+    def fake_close(fd: int) -> None:
+        calls.append(f"close {fd}")
+
+    monkeypatch.setattr(killswitch, "FSYNC_DIRS", True)
+    monkeypatch.setattr(os, "open", fake_open)
+    monkeypatch.setattr(os, "fsync", fake_fsync)
+    monkeypatch.setattr(os, "close", fake_close)
+    ks.engage("t", {})
+    assert calls == [f"open {ks.cache.parent}", "fsync dir", "close 987654"]
