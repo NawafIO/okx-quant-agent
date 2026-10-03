@@ -114,7 +114,13 @@ def test_nothing_decided_before_the_cut_depends_on_data_after_it() -> None:
 
 #: Golden fixture. If this changes, engine SEMANTICS changed: review the diff of
 #: ``canonical_json()`` deliberately, record why in the commit, then update the digest.
-GOLDEN_DIGEST = "dece7ca1dee4e92535084fb08f573954e670ac7d67a4089c7aaeb02aa5b37396"
+#: History: dece7ca1... -> 4b1f375c... (funding-bound-v1 added a ``bound`` flag to funding
+#: events and an assumption entry; with both stripped the output hashes to dece7ca1 exactly).
+#: 4b1f375c... -> a6882ae7... (slip-v2: only the slippage assumption LABEL changed for this
+#: floor-only fixture; with the old label restored it hashes to 4b1f375c exactly).
+#: a6882ae7... -> 37e9cb8b... (label now records stop_overshoot_k=0; the fixture runs
+#: with the term disabled, and with that token stripped it hashes to a6882ae7 exactly).
+GOLDEN_DIGEST = "37e9cb8bd04eba9771ecb38b38e149f031ba3b8d9ae9f2b0a5c84706e9d4b084"
 
 
 def test_golden_fixture() -> None:

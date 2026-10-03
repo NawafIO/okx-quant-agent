@@ -1,0 +1,26 @@
+{
+  "instrument": "ETH-USDT-SWAP",
+  "timeframe": "1d",
+  "SEALED": "Written before any real-data run. Opened only AFTER the BTC key is scored (scripts/validate_regime.py --open-sealed records the opening on the audit chain). If the thresholds are revised once, the revised set must pass THIS key, and this result is then binding.",
+  "criteria": "identical to key_btc.json",
+  "trend_windows": [
+    {"label": "TREND_UP", "from": "2021-01-01", "to": "2021-05-11", "why": "ETH's 2021 leg ran a month longer than BTC's, to the May ATH"},
+    {"label": "TREND_UP", "from": "2021-07-21", "to": "2021-11-09", "why": "second leg to the November ATH"},
+    {"label": "TREND_DOWN", "from": "2022-04-01", "to": "2022-06-30", "why": "2022 bear"},
+    {"label": "TREND_DOWN", "from": "2022-08-15", "to": "2022-12-31", "why": "post-Merge slide into FTX"}
+  ],
+  "crisis_events": [
+    {"date": "2020-03-12", "why": "COVID crash"},
+    {"date": "2021-05-19", "why": "May 2021 crash"},
+    {"date": "2022-06-13", "why": "Celsius / 3AC"},
+    {"date": "2022-11-08", "why": "FTX collapse"}
+  ],
+  "calm_windows": [
+    {"from": "2020-07-01", "to": "2020-07-20", "why": "quiet consolidation near 230"},
+    {"from": "2023-07-01", "to": "2023-08-15", "why": "quiet summer 2023 near 1.85k"}
+  ],
+  "range_windows": [
+    {"from": "2023-07-01", "to": "2023-08-15", "why": "sideways 1.8-1.95k"}
+  ],
+  "universe_crisis_rate_span": {"from": "2020-01-01", "to": "2025-09-30"}
+}

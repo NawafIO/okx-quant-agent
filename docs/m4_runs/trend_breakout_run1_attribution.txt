@@ -1,0 +1,30 @@
+trend_breakout: OOS attribution over 17 folds (gross includes slippage; fees and funding shown separately; net = gross + fees + funding)
+  instrument      side      n       gross       fees       slip    funding         net
+  BTC-USDT-SWAP   LONG     31        4748       -397        -89       -991        3360
+  BTC-USDT-SWAP   SHORT    18       -1725       -176        -51       -160       -2061
+  DOGE-USDT-SWAP  LONG     26        1945       -189       -188       -415        1342
+  DOGE-USDT-SWAP  SHORT    15       -2795        -98        -82       -193       -3085
+  ETH-USDT-SWAP   LONG     27        4630       -267        -88       -787        3576
+  ETH-USDT-SWAP   SHORT    18        -275       -138        -34       -192        -604
+  NEAR-USDT-SWAP  LONG     28        3127       -180       -228       -403        2544
+  NEAR-USDT-SWAP  SHORT    11         461        -56        -93       -519        -114
+  SAND-USDT-SWAP  LONG     25        6310       -173       -180       -272        5865
+  SAND-USDT-SWAP  SHORT    15        1585        -83        -85     -26146      -24644
+  SOL-USDT-SWAP   LONG     28        4344       -200       -168       -418        3725
+  SOL-USDT-SWAP   SHORT    12         346        -67        -43       -201          79
+  UNI-USDT-SWAP   LONG     26        -101       -173       -174       -444        -717
+  UNI-USDT-SWAP   SHORT    11         640        -65        -70       -215         361
+  XRP-USDT-SWAP   LONG     24        4294       -198       -149       -473        3623
+  XRP-USDT-SWAP   SHORT    14        -342       -101        -68       -405        -847
+  TOTAL                             27194      -2560      -1790     -32232       -7598
+
+  funding cash flow total -32232, of which from funding-bound-v1 -32232
+    bound funding BTC-USDT-SWAP         -1151
+    bound funding DOGE-USDT-SWAP         -607
+    bound funding ETH-USDT-SWAP          -979
+    bound funding NEAR-USDT-SWAP         -923
+    bound funding SAND-USDT-SWAP       -26418
+    bound funding SOL-USDT-SWAP          -619
+    bound funding UNI-USDT-SWAP          -659
+    bound funding XRP-USDT-SWAP          -878
+  logged trials now 400

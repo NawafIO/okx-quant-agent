@@ -16,7 +16,7 @@ from okxq.audit.chain import read_chain
 from okxq.backtest.engine import EngineConfig, StrategyContext
 from okxq.backtest.gates import FROZEN, Verdict
 from okxq.backtest.holdout import HoldoutSealedError
-from okxq.backtest.sizing import ProvisionalFixedFractionalSizer
+from okxq.backtest.sizing import RESEARCH_SIZING
 from okxq.backtest.trials import TrialLog
 from okxq.backtest.types import Action, BarSeries, FundingRate, OrderIntent
 from okxq.backtest.walkforward import ResearchProtocol, make_folds
@@ -128,7 +128,6 @@ def protocol(tmp_path: Path) -> tuple[ResearchProtocol, TrialLog]:
         data=provider,
         specs={INST: SPEC},
         config=cfg,
-        sizer=ProvisionalFixedFractionalSizer(Decimal("0.01"), Decimal(3)),
         profile=build_profile("PAPER", root=tmp_path),
         warmup_ms=30 * H4,
     )
@@ -158,6 +157,10 @@ def test_protocol_counts_every_configuration_it_evaluated(tmp_path: Path) -> Non
     assert result.report.n_trials == 19
     assert {o.gate for o in result.report.outcomes} == {f"G-{i}" for i in range(1, 10)}
     assert result.report.gates_sha256 == FROZEN.sha256()
+    # Every verdict records what it was priced at (M-1).
+    assert result.report.fee_provenance == "SYNTHETIC"
+    assert len(result.report.cost_config_sha) == 64
+    assert result.report.sizing_sha == RESEARCH_SIZING.sha256()
     # A random walk has no edge; whatever the verdict, it must not be ACCEPT.
     assert result.report.verdict is not Verdict.ACCEPT
 

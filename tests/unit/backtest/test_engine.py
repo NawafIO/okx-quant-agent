@@ -6,20 +6,23 @@ one-tick floor (0.1) so the arithmetic stays checkable.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from decimal import Decimal as D  # noqa: N817 - fixture brevity
 
 import pytest
 
-from okxq.backtest.engine import BacktestResult, StrategyContext
+from okxq.backtest.engine import BacktestEngine, BacktestResult, EngineConfig, StrategyContext
 from okxq.backtest.sizing import SizeDecision
 from okxq.backtest.types import (
     G9_STRESS,
     Action,
     BacktestConfigError,
+    BarSeries,
     InstrumentSpec,
     OrderIntent,
     Provenance,
+    SlippageModel,
 )
 
 from .conftest import (
@@ -445,17 +448,29 @@ def test_no_reentry_in_the_same_decision_as_an_exit() -> None:
     assert len(r.trades) == 1
 
 
-def test_slippage_is_volatility_and_size_scaled_by_hand() -> None:
-    """Nonzero coefficients (finding 7). Entry at bar 3's open = 100, lookback 2.
-    Closes before it: 100, 110, 100 -> log returns +/-ln(1.1), mean 0,
-    sample sd = sqrt(2 ln(1.1)^2 / 1) = ln(1.1) * sqrt(2).
-    participation = 1 / previous bar's volume 100 = 0.01 -> sqrt = 0.1.
-    raw = 100 * (0.1 * sd + 0.05 * 0.1); rounded UP to the 0.1 tick."""
-    import math
+def _slip_engine(bars: BarSeries, model: SlippageModel, start: int) -> BacktestEngine:
+    return BacktestEngine(
+        series={INST: bars},
+        specs={INST: SPEC},
+        funding={INST: flat_funding(12)},
+        config=EngineConfig(
+            fees=FEES,
+            slippage=model,
+            initial_equity=D(10_000),
+            participation_cap=D(1),
+            synthetic=True,
+        ),
+        sizer=FixedSizer(),
+        trade_start_ms=start,
+        end_ms=ts(len(bars)),
+    )
 
-    from okxq.backtest.engine import BacktestEngine, EngineConfig
-    from okxq.backtest.types import SlippageModel
 
+def test_slippage_impact_term_by_hand() -> None:
+    """slip-v2 impact (finding 7). Entry at bar 3's open = 100, vol lookback 2.
+    Closes before it: 100, 110, 100 -> sample sd of log returns = ln(1.1) * sqrt(2).
+    participation = 1 / previous bar's volume 100 -> sqrt = 0.1.
+    slip = max(tick, 0) + 100 * 1 * sd * 0.1 = 0.1 + 1.3479 -> rounded UP to 15 ticks."""
     bars = series(
         [
             ("100", "101", "99", "100", "100"),
@@ -465,24 +480,83 @@ def test_slippage_is_volatility_and_size_scaled_by_hand() -> None:
             FLAT,
         ]
     )
-    raw = 100 * (0.1 * math.log(1.1) * math.sqrt(2) + 0.05 * 0.1)
-    expected_slip = D(math.ceil(raw / 0.1)) * D("0.1")
-    assert expected_slip == D("1.9")  # 1.8479 -> 19 ticks
-    eng = BacktestEngine(
-        series={INST: bars},
-        specs={INST: SPEC},
-        funding={INST: flat_funding(8)},
-        config=EngineConfig(
-            fees=FEES,
-            slippage=SlippageModel(D("0.1"), D("0.05"), 2, "t"),
-            initial_equity=D(10_000),
-            participation_cap=D(1),
-            synthetic=True,
-        ),
-        sizer=FixedSizer(),
-        trade_start_ms=ts(2),
-        end_ms=ts(5),
+    raw = 0.1 + 100 * math.log(1.1) * math.sqrt(2) * 0.1
+    expected = D(math.ceil(raw / 0.1)) * D("0.1")
+    assert expected == D("1.5")
+    r = _slip_engine(bars, SlippageModel(D(1), 2, 0, "t"), ts(2)).run(
+        Scripted({ts(3): [enter("90")]})
     )
-    r = eng.run(Scripted({ts(3): [enter("90")]}))
-    assert r.fills[0].price == D(100) + expected_slip
-    assert r.fills[0].slippage_cost == expected_slip
+    assert r.fills[0].price == D(100) + expected
+    assert r.fills[0].slippage_cost == expected
+
+
+def test_slippage_spread_term_from_past_bars_only() -> None:
+    """slip-v2 spread term: half the Abdi-Ranaldo spread of the 4 bars BEFORE the fill,
+    re-derived here from the paper's formula (not by calling the module under test)."""
+    rows = [
+        ("100", "103", "97", "102", "1000"),
+        ("102", "104", "98", "99", "1000"),
+        ("99", "103", "96", "102", "1000"),
+        ("102", "105", "99", "100", "1000"),
+        ("100", "101", "99", "100", "1000"),  # the fill bar: its own H/L must not matter
+        FLAT,
+    ]
+    h = [float(r[1]) for r in rows[:4]]
+    lo = [float(r[2]) for r in rows[:4]]
+    c = [float(r[3]) for r in rows[:4]]
+    eta = [(math.log(a) + math.log(b)) / 2 for a, b in zip(h, lo, strict=True)]
+    terms = [4 * (math.log(c[t]) - eta[t]) * (math.log(c[t]) - eta[t + 1]) for t in range(3)]
+    rel = math.sqrt(max(0.0, sum(terms) / 3))
+    half = 100 * rel / 2
+    assert half > 0.1  # the estimate, not the tick floor, must be what binds here
+    expected = D(math.ceil(half / 0.1)) * D("0.1")
+    r = _slip_engine(series(rows), SlippageModel(D(0), 2, 4, "t"), ts(3)).run(
+        Scripted({ts(4): [enter("90")]})
+    )
+    assert r.fills[0].slippage_cost == expected
+
+
+def test_intrabar_stop_fills_beyond_the_level_by_the_frozen_overshoot() -> None:
+    """Overshoot term (ruling 2026-10-03), by hand. vol lookback 2: at the stop bar the
+    closes are 110, 100, 100 -> log returns ln(100/110), 0 -> sample sd = |ln(1.1)|/sqrt(2).
+    overshoot = max(0.1, 95 * 0.2 * sd) rounded UP to the tick; then one tick of slippage."""
+    bars = series(
+        [
+            ("100", "101", "99", "100", "1000"),
+            ("100", "111", "99", "110", "1000"),
+            ("110", "111", "99", "100", "1000"),
+            ("100", "101", "99", "100", "1000"),  # entry fills at this open (100.1)
+            ("100", "101", "94", "96", "1000"),  # stop at 95 crossed intrabar
+            FLAT,
+        ]
+    )
+    sd = math.log(1.1) / math.sqrt(2)
+    overshoot = D(math.ceil(95 * 0.2 * sd / 0.1)) * D("0.1")
+    assert overshoot == D("1.3")
+    model = SlippageModel(D(0), 2, 0, "t", stop_overshoot_k=D("0.2"))
+    r = _slip_engine(bars, model, ts(2)).run(Scripted({ts(3): [enter("95")]}))
+    (t,) = r.trades
+    assert t.exit_reason == "stop"
+    assert t.avg_exit == D(95) - overshoot - D("0.1")
+
+
+def test_overshoot_does_not_apply_to_a_gap_stop() -> None:
+    """A gap through the stop already fills at the real (gapped) open."""
+    bars = series(
+        [*([("100", "101", "99", "100", "1000")] * 4), ("92", "93", "91", "92", "1000"), FLAT]
+    )
+    model = SlippageModel(D(0), 2, 0, "t", stop_overshoot_k=D("0.2"))
+    r = _slip_engine(bars, model, ts(2)).run(Scripted({ts(3): [enter("95")]}))
+    (t,) = r.trades
+    assert t.exit_reason == "stop_gap"
+    assert t.avg_exit == D("91.9")  # open 92 less one tick, no overshoot added
+
+
+def test_an_entry_with_no_liquidity_is_one_event_one_record() -> None:
+    """Ruling 2026-10-03: a no-volume refusal is not ALSO logged as an expired remainder."""
+    dead = ("100", "100", "100", "100", "0")
+    s = series([FLAT, FLAT, dead, FLAT, FLAT])  # bar 3's open is capped by bar 2's volume 0
+    r = engine(s, start=ts(1), end=ts(5), participation_cap="0.1").run(
+        Scripted({ts(3): [enter("90")]})
+    )
+    assert [x.reason for x in r.rejections] == ["entry_no_liquidity"]

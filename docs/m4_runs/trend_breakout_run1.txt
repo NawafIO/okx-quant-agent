@@ -1,0 +1,52 @@
+trend_breakout version 8dec27355fd6; grid 8; span 2020-07-01..2025-09-30; sizing e32046ed9bbc; trials before this run 0
+
+VERDICT DISCARD   (N trials now 383; this run added 383)
+fees UNMEASURED_ASSUMPTION; cost 546f4fbccdb5; sizing e32046ed9bbc; gates 9066dca9f14b
+  G-1   PASS     observed 0.05269424288267073001951137376  limit <= 0.15  
+  G-2   PASS     observed 2.272832871275294369022058748  limit >= 1.5  
+  G-3   INVALID  observed 98  limit >= 100  
+  G-4   FAIL     observed 0.9301813758062816591907221896  limit >= 1.2  
+  G-5   PASS     observed OOS 0.9301813758062816591907221896 / IS 1.217315441886016472786644856 = 0.7641251756119424483070804667  limit >= 0.5 x IS  
+  G-6   FAIL     observed 0/12 held  limit PF >= 1.2 and MaxDD <= 0.15 for every +/-0.20  atr_days x0.80: PF 0.9230250775811691640838064630 DD 0.2943758780138789304473371493; atr_days x1.20: PF 0.9505120249848576387182226544 DD 0.2901582022933337364283436245; entry_days x0.80: PF 0.9478395617138157406907664520 DD 0.2637820963173079952175653449; entry_days x1.20: PF 0.9042760953495894767737424064 DD 0.2863447054351538480492448812; exit_days x0.80: PF 1.009708984654673971106919776 DD 0.2562052457799558753995467619; exit_days x1.20: PF 0.9263877092541433265201308576 DD 0.2770830336094584051664185662; stop_atr x0.80: PF 0.9309845854803740286930910287 DD 0.3159819107574875339977821813; stop_atr x1.20: PF 0.8897415619772024576003667424 DD 0.2645793712511533438536167390; target_atr x0.80: PF 0.9399212816405291807784581470 DD 0.2848808061088176996388655439; target_atr x1.20: PF 1.031274312622617838122451268 DD 0.2744617303113966096060665378; warmup_bars x0.80: PF 0.9301001755727183504209739415 DD 0.2829034260355584658480062784; warmup_bars x1.20: PF 0.9301599524016885775541885645 DD 0.2829064993453281042001142522
+  G-7   INVALID  observed net profit not positive  limit top 5 <= 0.5 of net profit  
+  G-8   FAIL     observed 0.000000  limit >= 0.95 (N=383)  
+  G-9   FAIL     observed G-3 INVALID: 98; G-4 FAIL: 0.6826550752356531088597015214; G-7 INVALID: net profit not positive  limit fees x2, slippage x2, funding paid x2, funding received x0.5  
+  G-9 under stress: G-1 PASS observed 0.06212757950859729382882762524
+  G-9 under stress: G-2 PASS observed 2.031359279639964244483216619
+  G-9 under stress: G-3 INVALID observed 98
+  G-9 under stress: G-4 FAIL observed 0.6826550752356531088597015214
+  G-9 under stress: G-7 INVALID observed net profit not positive
+final params (full-span selection): {'entry_days': 55, 'exit_days': 10, 'atr_days': 20, 'stop_atr': 3.0, 'target_atr': 10.0, 'warmup_bars': 3600}
+
+walk-forward: 17 folds, 17 with a selection; 329 OOS trades
+  fold  0 test 2021-07-01:    12 trades, net      2590.50, params {'entry_days': 20, 'exit_days': 10, 'atr_days': 20, 'stop_atr': 3.0, 'target_atr': 10.0, 'warmup_bars': 3600}
+  fold  1 test 2021-10-01:    24 trades, net      -842.04, params {'entry_days': 20, 'exit_days': 10, 'atr_days': 20, 'stop_atr': 2.0, 'target_atr': 10.0, 'warmup_bars': 3600}
+  fold  2 test 2022-01-01:    17 trades, net       848.87, params {'entry_days': 20, 'exit_days': 10, 'atr_days': 20, 'stop_atr': 2.0, 'target_atr': 10.0, 'warmup_bars': 3600}
+  fold  3 test 2022-04-01:    10 trades, net      6242.49, params {'entry_days': 20, 'exit_days': 20, 'atr_days': 20, 'stop_atr': 2.0, 'target_atr': 10.0, 'warmup_bars': 3600}
+  fold  4 test 2022-07-01:    22 trades, net     -8460.57, params {'entry_days': 20, 'exit_days': 20, 'atr_days': 20, 'stop_atr': 2.0, 'target_atr': 10.0, 'warmup_bars': 3600}
+  fold  5 test 2022-10-01:    22 trades, net     -5378.87, params {'entry_days': 20, 'exit_days': 10, 'atr_days': 20, 'stop_atr': 3.0, 'target_atr': 10.0, 'warmup_bars': 3600}
+  fold  6 test 2023-01-01:    23 trades, net      4704.19, params {'entry_days': 20, 'exit_days': 10, 'atr_days': 20, 'stop_atr': 2.0, 'target_atr': 10.0, 'warmup_bars': 3600}
+  fold  7 test 2023-04-01:    22 trades, net     -8751.07, params {'entry_days': 20, 'exit_days': 10, 'atr_days': 20, 'stop_atr': 2.0, 'target_atr': 10.0, 'warmup_bars': 3600}
+  fold  8 test 2023-07-01:    11 trades, net     -5539.81, params {'entry_days': 55, 'exit_days': 10, 'atr_days': 20, 'stop_atr': 3.0, 'target_atr': 10.0, 'warmup_bars': 3600}
+  fold  9 test 2023-10-01:    35 trades, net     10640.61, params {'entry_days': 20, 'exit_days': 10, 'atr_days': 20, 'stop_atr': 2.0, 'target_atr': 10.0, 'warmup_bars': 3600}
+  fold 10 test 2024-01-01:    25 trades, net      9597.58, params {'entry_days': 20, 'exit_days': 10, 'atr_days': 20, 'stop_atr': 2.0, 'target_atr': 10.0, 'warmup_bars': 3600}
+  fold 11 test 2024-04-01:    17 trades, net     -4167.56, params {'entry_days': 20, 'exit_days': 20, 'atr_days': 20, 'stop_atr': 3.0, 'target_atr': 10.0, 'warmup_bars': 3600}
+  fold 12 test 2024-07-01:    36 trades, net    -12538.01, params {'entry_days': 20, 'exit_days': 10, 'atr_days': 20, 'stop_atr': 2.0, 'target_atr': 10.0, 'warmup_bars': 3600}
+  fold 13 test 2024-10-01:    21 trades, net      8672.60, params {'entry_days': 55, 'exit_days': 10, 'atr_days': 20, 'stop_atr': 3.0, 'target_atr': 10.0, 'warmup_bars': 3600}
+  fold 14 test 2025-01-01:     4 trades, net      -368.49, params {'entry_days': 55, 'exit_days': 10, 'atr_days': 20, 'stop_atr': 3.0, 'target_atr': 10.0, 'warmup_bars': 3600}
+  fold 15 test 2025-04-01:    15 trades, net     -5127.97, params {'entry_days': 55, 'exit_days': 10, 'atr_days': 20, 'stop_atr': 3.0, 'target_atr': 10.0, 'warmup_bars': 3600}
+  fold 16 test 2025-07-01:    13 trades, net       279.39, params {'entry_days': 55, 'exit_days': 10, 'atr_days': 20, 'stop_atr': 2.0, 'target_atr': 10.0, 'warmup_bars': 3600}
+
+per-instrument OOS breakdown:
+  BTC-USDT-SWAP    trades    49  net      1298.41  PF 1.095
+  DOGE-USDT-SWAP   trades    41  net     -1743.01  PF 0.845
+  ETH-USDT-SWAP    trades    45  net      2972.25  PF 1.256
+  NEAR-USDT-SWAP   trades    39  net      2429.37  PF 1.239
+  SAND-USDT-SWAP   trades    40  net    -18779.18  PF 0.431
+  SOL-USDT-SWAP    trades    40  net      3804.06  PF 1.365
+  UNI-USDT-SWAP    trades    37  net      -356.26  PF 0.958
+  XRP-USDT-SWAP    trades    38  net      2776.22  PF 1.271
+  BTC+ETH only     trades    94  net      4270.66  PF 1.169
+
+SURVIVORSHIP (V-14): the universe contains only instruments still listed in 2026; delisted perpetuals (e.g. LUNA, FTT) cannot be obtained from OKX. Results are biased UPWARD by an unknown amount, so a pass is weaker evidence than the gates imply. See the per-instrument breakdown and the BTC+ETH-only line.
+exit=0

@@ -1,0 +1,161 @@
+{
+  "rule": "docs/M4_DESIGN.md section 2: first 1h bar <= 2022-09-30 AND median daily quote turnover (close x base volume, research window) >= 5000000",
+  "computed": "2026-10-03",
+  "members": [
+    "BTC-USDT-SWAP",
+    "DOGE-USDT-SWAP",
+    "ETH-USDT-SWAP",
+    "NEAR-USDT-SWAP",
+    "SAND-USDT-SWAP",
+    "SOL-USDT-SWAP",
+    "UNI-USDT-SWAP",
+    "XRP-USDT-SWAP"
+  ],
+  "instruments": [
+    {
+      "inst_id": "BTC-USDT-SWAP",
+      "first_1h": "2019-12-16",
+      "median_daily_quote_turnover_usd": 2951026256,
+      "history_ok": true,
+      "liquidity_ok": true,
+      "included": true
+    },
+    {
+      "inst_id": "CL-USDT-SWAP",
+      "included": false,
+      "why": "no research-window bars"
+    },
+    {
+      "inst_id": "DOGE-USDT-SWAP",
+      "first_1h": "2020-07-10",
+      "median_daily_quote_turnover_usd": 222349371,
+      "history_ok": true,
+      "liquidity_ok": true,
+      "included": true
+    },
+    {
+      "inst_id": "ETH-USDT-SWAP",
+      "first_1h": "2019-12-25",
+      "median_daily_quote_turnover_usd": 3647747961,
+      "history_ok": true,
+      "liquidity_ok": true,
+      "included": true
+    },
+    {
+      "inst_id": "HYPE-USDT-SWAP",
+      "first_1h": "2025-02-21",
+      "median_daily_quote_turnover_usd": 67966087,
+      "history_ok": false,
+      "liquidity_ok": true,
+      "included": false
+    },
+    {
+      "inst_id": "MU-USDT-SWAP",
+      "included": false,
+      "why": "no research-window bars"
+    },
+    {
+      "inst_id": "NEAR-USDT-SWAP",
+      "first_1h": "2020-12-21",
+      "median_daily_quote_turnover_usd": 27537763,
+      "history_ok": true,
+      "liquidity_ok": true,
+      "included": true
+    },
+    {
+      "inst_id": "NIGHT-USDT-SWAP",
+      "included": false,
+      "why": "no research-window bars"
+    },
+    {
+      "inst_id": "PEPE-USDT-SWAP",
+      "first_1h": "2023-05-03",
+      "median_daily_quote_turnover_usd": 400302548,
+      "history_ok": false,
+      "liquidity_ok": true,
+      "included": false
+    },
+    {
+      "inst_id": "PUMP-USDT-SWAP",
+      "first_1h": "2025-07-14",
+      "median_daily_quote_turnover_usd": 219240643,
+      "history_ok": false,
+      "liquidity_ok": true,
+      "included": false
+    },
+    {
+      "inst_id": "SAND-USDT-SWAP",
+      "first_1h": "2021-04-02",
+      "median_daily_quote_turnover_usd": 13663607,
+      "history_ok": true,
+      "liquidity_ok": true,
+      "included": true
+    },
+    {
+      "inst_id": "SNDK-USDT-SWAP",
+      "included": false,
+      "why": "no research-window bars"
+    },
+    {
+      "inst_id": "SOL-USDT-SWAP",
+      "first_1h": "2021-01-22",
+      "median_daily_quote_turnover_usd": 322721101,
+      "history_ok": true,
+      "liquidity_ok": true,
+      "included": true
+    },
+    {
+      "inst_id": "SUI-USDT-SWAP",
+      "first_1h": "2023-05-05",
+      "median_daily_quote_turnover_usd": 150543674,
+      "history_ok": false,
+      "liquidity_ok": true,
+      "included": false
+    },
+    {
+      "inst_id": "TRUMP-USDT-SWAP",
+      "first_1h": "2025-01-19",
+      "median_daily_quote_turnover_usd": 175366234,
+      "history_ok": false,
+      "liquidity_ok": true,
+      "included": false
+    },
+    {
+      "inst_id": "UNI-USDT-SWAP",
+      "first_1h": "2020-09-17",
+      "median_daily_quote_turnover_usd": 35658345,
+      "history_ok": true,
+      "liquidity_ok": true,
+      "included": true
+    },
+    {
+      "inst_id": "WLD-USDT-SWAP",
+      "first_1h": "2023-07-24",
+      "median_daily_quote_turnover_usd": 134886982,
+      "history_ok": false,
+      "liquidity_ok": true,
+      "included": false
+    },
+    {
+      "inst_id": "XAU-USDT-SWAP",
+      "first_1h": "2025-04-09",
+      "median_daily_quote_turnover_usd": 12215527,
+      "history_ok": false,
+      "liquidity_ok": true,
+      "included": false
+    },
+    {
+      "inst_id": "XRP-USDT-SWAP",
+      "first_1h": "2019-12-31",
+      "median_daily_quote_turnover_usd": 85647940,
+      "history_ok": true,
+      "liquidity_ok": true,
+      "included": true
+    },
+    {
+      "inst_id": "ZEC-USDT-SWAP",
+      "included": false,
+      "why": "no research-window bars"
+    }
+  ]
+}

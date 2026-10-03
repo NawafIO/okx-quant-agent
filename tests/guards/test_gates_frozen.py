@@ -17,7 +17,7 @@ from okxq.backtest.gates import FROZEN, PINNED_GATES_SHA256, FrozenGates, GateTa
 pytestmark = pytest.mark.guard
 
 #: SHA-256 of FrozenGates().canonical_json(), frozen at M2 (2026-10-03).
-PINNED_SHA256 = "48908f93c671a07134f1852e09f3773f99a7f2e8f3b58d07932d7c69591cbd0f"
+PINNED_SHA256 = "9066dca9f14b4003f8b45658c89e6761b40700b5d04cd5b23c2e816290d52b79"
 
 
 def test_gate_definitions_match_the_frozen_pin() -> None:
@@ -80,3 +80,32 @@ def test_no_public_function_accepts_replacement_thresholds(module: str) -> None:
             for p in params.values():
                 assert "FrozenGates" not in str(p.annotation), f"{module}.{name}: {p.name}"
                 assert p.name not in {"g", "gates", "thresholds"}, f"{module}.{name}: {p.name}"
+
+
+# --- research sizing (Chief Advisor, M4 checkpoint 1): sizing is a G-1 lever ---------------
+
+#: SHA-256 of ResearchSizing().canonical_json(), frozen before the first M4 run (2026-10-03).
+PINNED_SIZING_SHA256 = "e32046ed9bbc3b33e7a40d1ada9b0d6751d2b7b7ba132594f4f86e8f68908353"
+
+
+def test_research_sizing_matches_the_frozen_pin() -> None:
+    from okxq.backtest.sizing import PINNED_RESEARCH_SIZING_SHA256, RESEARCH_SIZING
+
+    assert RESEARCH_SIZING.sha256() == PINNED_SIZING_SHA256 == PINNED_RESEARCH_SIZING_SHA256
+    assert Decimal("0.005") == RESEARCH_SIZING.risk_fraction  # RC-05
+    assert Decimal(3) == RESEARCH_SIZING.leverage  # RC-12
+
+
+def test_research_sizing_refuses_other_values() -> None:
+    from okxq.backtest.sizing import ResearchSizing, SizingTamperError
+
+    with pytest.raises(SizingTamperError):
+        ResearchSizing(risk_fraction=Decimal("0.0025"))
+
+
+def test_research_protocol_does_not_accept_a_sizer() -> None:
+    import inspect
+
+    from okxq.backtest.walkforward import ResearchProtocol
+
+    assert "sizer" not in inspect.signature(ResearchProtocol.__init__).parameters

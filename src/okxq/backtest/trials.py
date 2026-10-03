@@ -46,6 +46,8 @@ class Trial:
     per_period_sharpe: float | None
     profit_factor: str | None
     result_digest: str
+    #: ResearchSizing sha the run was sized with (M4 checkpoint 1).
+    sizing_sha: str = ""
 
 
 class TrialLog:
@@ -76,6 +78,7 @@ class TrialLog:
             "per_period_sharpe": trial.per_period_sharpe,
             "profit_factor": trial.profit_factor,
             "result_digest": trial.result_digest,
+            "sizing_sha": trial.sizing_sha,
         }
         self._chain.append(TRIAL_KIND, payload)
 

@@ -16,7 +16,7 @@ import pytest
 pytestmark = pytest.mark.guard
 
 SRC = Path(__file__).resolve().parents[2] / "src" / "okxq"
-GUARDED_PACKAGES = ("strategy", "strategies", "research")
+GUARDED_PACKAGES = ("strategy", "strategies", "research", "analysis")
 #: Strategy code that already exists. Listed so the guard is never vacuous.
 GUARDED_FILES = ("backtest/reference_strategies.py",)
 FORBIDDEN_MODULES = ("duckdb", "pyarrow", "polars", "okxq.data", "sqlite3", "importlib")
@@ -31,11 +31,27 @@ FORBIDDEN_NAMES = {
         "unseal_holdout",
     },
     # Importing the whole module hands out every side door as an attribute.
-    "okxq.backtest": {"holdout", "trials"},
+    "okxq.backtest": {"holdout", "trials", "engine", "sizing"},
+    # Research runs only through ResearchProtocol, which sizes with the pinned research
+    # sizing; an engine or sizer built by hand would bypass both the pin and the trial log.
+    "okxq.backtest.engine": {"BacktestEngine"},
+    "okxq.backtest.sizing": {
+        "ProvisionalFixedFractionalSizer",
+        "ProvisionalFixedNotionalSizer",
+        "ResearchSizing",
+        "PINNED_RESEARCH_SIZING_SHA256",
+    },
     # Constructing gates is pinned anyway; importing the class has no research use.
     "okxq.backtest.gates": {"FrozenGates", "PINNED_GATES_SHA256"},
+    # Regime labels come only from the pinned classify(); thresholds are not a strategy knob.
+    "okxq.analysis.regime": {"classify_with", "RegimeParams", "FrozenRegime"},
 }
-WHOLE_MODULE_FORBIDDEN = {"okxq.backtest.holdout", "okxq.backtest.trials"}
+WHOLE_MODULE_FORBIDDEN = {
+    "okxq.backtest.holdout",
+    "okxq.backtest.trials",
+    "okxq.backtest.engine",
+    "okxq.backtest.sizing",
+}
 
 
 def violations(source: str) -> list[str]:
@@ -74,6 +90,16 @@ def violations(source: str) -> list[str]:
         ("import okxq.backtest.holdout", ["okxq.backtest.holdout"]),
         ("from okxq.backtest import holdout", ["okxq.backtest.holdout"]),
         ("import importlib", ["importlib"]),
+        (
+            "from okxq.backtest.engine import BacktestEngine",
+            ["okxq.backtest.engine.BacktestEngine"],
+        ),
+        (
+            "from okxq.backtest.sizing import ProvisionalFixedFractionalSizer",
+            ["okxq.backtest.sizing.ProvisionalFixedFractionalSizer"],
+        ),
+        ("from okxq.backtest import sizing", ["okxq.backtest.sizing"]),
+        ("from okxq.backtest.engine import StrategyContext", []),
         ("from importlib import import_module", ["importlib"]),
         ("m = __import__('duckdb')", ["__import__()"]),
         ("from okxq.backtest.gates import FrozenGates", ["okxq.backtest.gates.FrozenGates"]),

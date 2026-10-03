@@ -23,6 +23,7 @@ from pathlib import Path
 from statistics import mean
 
 from okxq.audit.chain import AuditChain
+from okxq.backtest import costs, funding_bound, sanity
 from okxq.backtest import funding_model as fm
 from okxq.backtest.engine import BacktestEngine, EngineConfig
 from okxq.backtest.gates import FROZEN
@@ -34,7 +35,8 @@ from okxq.backtest.holdout import (
     load_research_funding,
 )
 from okxq.backtest.reference_strategies import RandomEntry
-from okxq.backtest.sizing import ProvisionalFixedFractionalSizer
+from okxq.backtest.sizing import ProvisionalFixedNotionalSizer
+from okxq.backtest.spread import abdi_ranaldo_spread
 from okxq.backtest.types import (
     BacktestConfigError,
     BarSeries,
@@ -42,7 +44,6 @@ from okxq.backtest.types import (
     FundingRate,
     InstrumentSpec,
     Provenance,
-    SlippageModel,
 )
 from okxq.data.manifest import PartitionKey
 from okxq.data.okx_public import FundingPoint
@@ -53,11 +54,6 @@ from okxq.obs.logging import configure_logging, get_logger
 
 log = get_logger(__name__)
 HOUR = 3_600_000
-
-#: The provisional slippage assumption for M2 sanity runs, reconciled against PAPER at M7.
-DEFAULT_SLIPPAGE = SlippageModel(
-    k_vol=Decimal("0.25"), k_impact=Decimal("0.1"), vol_lookback=24, assumption_id="slip-v1"
-)
 
 
 def _store(env: str) -> tuple[ParquetStore, Path, AuditChain]:
@@ -117,6 +113,17 @@ def cmd_funding_validate(args: argparse.Namespace) -> int:
     }
     out = state_dir / "funding_validation.json"
     out.write_text(json.dumps(payload, indent=2, default=str), encoding="utf-8")
+    # Every look at the validation window is a D1 trial (Chief Advisor ruling 2026-10-03):
+    # the record is what stops a failed model from being quietly re-fitted until it passes.
+    chain.append(
+        "d1_validation",
+        {
+            "model": fm.MODEL_VERSION,
+            "verdict": str(report.verdict),
+            "passed": sorted(v.inst_id for v in report.instruments if v.passed),
+            "failed": sorted(v.inst_id for v in report.instruments if not v.passed),
+        },
+    )
     print(f"funding model {fm.MODEL_VERSION}: {report.verdict}   (report: {out})")
     for v in report.instruments:
         rel = "abs-floor" if v.rel_error is None else f"{v.rel_error:7.1%}"
@@ -134,6 +141,37 @@ def cmd_funding_validate(args: argparse.Namespace) -> int:
         print(f"  PARTIAL: only {sorted(report.validated)} may receive a modelled series")
         return 0
     return 0 if report.verdict is fm.FundingVerdict.PASS else 4
+
+
+def cmd_funding_bound(args: argparse.Namespace) -> int:
+    """Derive funding-bound-v1 from realised funding (calibration door, logged) and freeze
+    it in docs/funding_bound_v1.json for the research door to use."""
+    store, _, chain = _store(args.env)
+    now = int(datetime.now(tz=UTC).timestamp() * 1000)
+    base = store.root / "funding"
+    insts = sorted(p.name.removeprefix("inst_id=") for p in base.glob("inst_id=*"))
+    bounds = []
+    for inst in insts:
+        realised = load_calibration_funding(store, chain, inst, 0, now)
+        if len(realised) < 2:
+            print(f"  {inst}: too little realised funding - no bound, engine will refuse it")
+            continue
+        bounds.append(funding_bound.derive(inst, realised))
+    funding_bound.write_bounds(bounds)
+    chain.append(
+        "funding_bound_derived",
+        {
+            "version": funding_bound.BOUND_VERSION,
+            "instruments": {b.inst_id: [str(b.cost_long), str(b.cost_short)] for b in bounds},
+        },
+    )
+    print(f"{funding_bound.BOUND_VERSION}: {len(bounds)} instruments -> {funding_bound.BOUND_FILE}")
+    for b in bounds:
+        print(
+            f"  {b.inst_id:<18} {b.interval_ms // HOUR}h  long pays {b.cost_long:.8f}  "
+            f"short pays {b.cost_short:.8f}  (n={b.n_realised})"
+        )
+    return 0
 
 
 def cmd_funding_model(args: argparse.Namespace) -> int:
@@ -190,57 +228,135 @@ def _load_specs(path: Path) -> dict[str, InstrumentSpec]:
     }
 
 
-def cmd_sanity_random(args: argparse.Namespace) -> int:
-    store, _, _ = _store(args.env)
-    specs = _load_specs(Path(args.specs))
-    fees = FeeSchedule(Decimal(args.maker), Decimal(args.taker), Provenance.MEASURED)
-    log.info("fee provenance", extra={"evidence": args.fee_evidence})
+def _research_window(
+    store: ParquetStore, specs: dict[str, InstrumentSpec], years: float
+) -> tuple[int, int, dict[str, BarSeries], dict[str, list[FundingRate]]]:
     end = FROZEN.holdout_start_ms
-    start = end - int(args.years * 365 * 24 * HOUR)
+    start = end - int(years * 365 * 24 * HOUR)
+    warm = start - 30 * 24 * HOUR
     series: dict[str, BarSeries] = {}
-    funding: dict[str, Sequence[FundingRate]] = {}
+    funding: dict[str, list[FundingRate]] = {}
     for inst in sorted(specs):
-        bars = load_research_bars(store, inst, "1h", start - 30 * 24 * HOUR, end)
-        rates = load_research_funding(store, inst, start - 30 * 24 * HOUR, end)
+        bars = load_research_bars(store, inst, "1h", warm, end)
+        rates = load_research_funding(store, inst, warm, end)
         if len(bars) and len(rates) >= 2:
             series[inst], funding[inst] = bars, rates
-    config = EngineConfig(fees=fees, slippage=DEFAULT_SLIPPAGE, initial_equity=Decimal(100_000))
-    sizer = ProvisionalFixedFractionalSizer(Decimal("0.005"), Decimal(3))
+    return start, end, series, funding
 
-    def build(insts: Sequence[str]) -> BacktestEngine:
+
+SPREAD_SNAPSHOT = Path(__file__).resolve().parents[3] / "docs" / "spreads_snapshot_2026-10-03.json"
+
+
+def _print_spread_comparison(series: dict[str, BarSeries], insts: Sequence[str]) -> None:
+    """Reporting only (closing-audit M-2): how heavy is the modelled spread? The Abdi-Ranaldo
+    half-spread the engine charges (median over the window, sampled daily on the same
+    168-bar lookback) next to the half-spread measured from live books on one day."""
+    lookback = costs.RESEARCH_SLIPPAGE.spread_lookback
+    snap: dict[str, float] = {}
+    if SPREAD_SNAPSHOT.exists():
+        raw = json.loads(SPREAD_SNAPSHOT.read_text(encoding="utf-8"))["instruments"]
+        snap = {k: float(v["spread_bps_median"]) / 2 for k, v in raw.items()}
+    print("\n   modelled vs measured HALF-spread (bps; reporting only, not a gate):")
+    for inst in insts:
+        s = series[inst]
+        hs = []
+        for i in range(lookback, len(s), 24):
+            rel = abdi_ranaldo_spread(
+                [float(x) for x in s.high[i - lookback : i]],
+                [float(x) for x in s.low[i - lookback : i]],
+                [float(x) for x in s.close[i - lookback : i]],
+            )
+            hs.append(rel / 2 * 1e4)
+        med = sorted(hs)[len(hs) // 2] if hs else float("nan")
+        live = snap.get(inst)
+        ratio = f"{med / live:7.0f}x" if live else "      -"
+        live_s = f"{live:7.3f}" if live is not None else "      -"
+        print(f"     {inst:<18} model median {med:7.2f}   live 2026-10-03 {live_s}   {ratio}")
+
+
+def cmd_sanity_random(args: argparse.Namespace) -> int:
+    """Random entry must lose, by exactly the modelled costs (see okxq.backtest.sanity)."""
+    store, _, _ = _store(args.env)
+    specs = _load_specs(Path(args.specs))
+    start, end, series, funding = _research_window(store, specs, args.years)
+    notional = Decimal(args.notional)
+    sizer = ProvisionalFixedNotionalSizer(notional)
+    fee_sets: list[tuple[str, FeeSchedule]] = []
+    if args.maker is not None:
+        if not args.fee_evidence:
+            print("--maker/--taker need --fee-evidence (where and when they were read)")
+            return 2
+        fee_sets.append(
+            ("measured", FeeSchedule(Decimal(args.maker), Decimal(args.taker), Provenance.MEASURED))
+        )
+    fee_sets += [
+        ("user spot-schedule", costs.FEES_USER_SPOT_SCHEDULE),
+        ("low sensitivity", costs.FEES_LOW_SENSITIVITY),
+    ]
+
+    def build(insts: Sequence[str], cfg: EngineConfig, sz: object = sizer) -> BacktestEngine:
         return BacktestEngine(
             series={k: series[k] for k in insts},
             specs=specs,
             funding={k: funding[k] for k in insts},
-            config=config,
-            sizer=sizer,
+            config=cfg,
+            sizer=sz,  # type: ignore[arg-type]
             trade_start_ms=start,
             end_ms=end,
         )
 
-    # Instruments the funding series does not cover are dropped LOUDLY, never run at zero
-    # funding (finding A-1).
+    # Instruments the funding series does not cover are dropped LOUDLY (finding A-1).
+    probe = costs.research_config(costs.FEES_LOW_SENSITIVITY)
     usable = []
     for inst in sorted(series):
         try:
-            build([inst])
+            build([inst], probe)
             usable.append(inst)
         except BacktestConfigError as exc:
             print(f"  dropped {inst}: {exc}")
     if not usable:
         print("no instrument has bars and covering funding over the window")
         return 4
-    print(f"random entry over {len(usable)} instruments, {args.years}y, {args.seeds} seeds")
-    expectancies = []
-    for seed in range(args.seeds):
-        res = build(usable).run(RandomEntry(seed=seed))
-        pnls = res.net_pnls
-        e = float(sum(pnls, Decimal(0)) / len(pnls)) if pnls else 0.0
-        expectancies.append(e)
-        print(f"  seed {seed:>3}: {len(pnls):>5} trades, expectancy {e:+.4f} USDT/trade")
-    neg = sum(1 for e in expectancies if e < 0)
-    print(f"mean expectancy {mean(expectancies):+.4f}; negative in {neg}/{len(expectancies)} seeds")
-    return 0 if mean(expectancies) < 0 else 5
+
+    _print_spread_comparison(series, usable)
+
+    # Size ladder (check 6), at low fees and with the participation cap effectively OFF:
+    # a binding cap fills every rung at the same quantity, so slippage cannot rise with
+    # size and the check would measure the cap, not the impact term.
+    ladder = []
+    for n in (Decimal(1_000), Decimal(100_000), Decimal(1_000_000), Decimal(10_000_000)):
+        cfg = costs.research_config(
+            costs.FEES_LOW_SENSITIVITY, initial_equity=n * 1000, participation_cap=Decimal(10**9)
+        )
+        res = build(usable, cfg, ProvisionalFixedNotionalSizer(n)).run(RandomEntry(seed=0))
+        bps = [
+            float(f.slippage_cost / (abs(f.qty_delta) * f.price)) * 1e4
+            for f in res.fills
+            if f.liquidity == "taker" and f.qty_delta
+        ]
+        ladder.append((n, mean(bps) if bps else 0.0))
+
+    # Starting equity is sized so cumulative cost stays below 25% of it (ruling): the first
+    # real-data run cost 48.8 bps x $1,000 x ~9,675 trades/run = ~$47.2k at the user fees,
+    # so >= $189k is needed; $250k keeps it near 19%. With fixed notional, equity does not
+    # change trade size - the gate is "no entry resized or refused", not an equity floor.
+    sanity_equity = Decimal(250_000)
+    ok = True
+    for label, fees in fee_sets:
+        cfg = costs.research_config(fees, initial_equity=sanity_equity)
+        print(f"\n== fees: {label} (maker {fees.maker}, taker {fees.taker}, {fees.provenance}) ==")
+        print(f"   cost config sha256 {costs.cost_config_sha(cfg)}")
+        print(
+            f"   {len(usable)} instruments, {args.years}y to the holdout, {args.seeds} seeds, "
+            f"${notional:,} per trade"
+        )
+        results = [build(usable, cfg).run(RandomEntry(seed=s)) for s in range(args.seeds)]
+        report = sanity.evaluate(results, cfg.initial_equity, ladder)
+        for c in report.checks:
+            print(f"   [{'PASS' if c.passed else 'FAIL'}] {c.name}: {c.detail}")
+        ok = ok and report.passed
+    print("\nRANDOM-ENTRY CHECK:", "PASS" if ok else "FAIL - cost model suspect; do not proceed")
+    return 0 if ok else 5
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -250,18 +366,20 @@ def main(argv: list[str] | None = None) -> int:
     for name, fn in (
         ("funding-validate", cmd_funding_validate),
         ("funding-model", cmd_funding_model),
+        ("funding-bound", cmd_funding_bound),
     ):
         p = sub.add_parser(name)
         p.add_argument("--env", required=True, choices=["DEMO", "PAPER", "LIVE"])
         p.set_defaults(func=fn)
-    s = sub.add_parser("sanity-random", help="random entry must lose after costs")
+    s = sub.add_parser("sanity-random", help="random entry must lose, by exactly the costs")
     s.add_argument("--env", required=True, choices=["DEMO", "PAPER", "LIVE"])
     s.add_argument("--specs", required=True, help="measured instrument specs JSON")
-    s.add_argument("--maker", required=True)
-    s.add_argument("--taker", required=True)
-    s.add_argument("--fee-evidence", required=True, help="where and when the rates were read")
+    s.add_argument("--maker", default=None, help="MEASURED perp maker rate (optional)")
+    s.add_argument("--taker", default=None, help="MEASURED perp taker rate (optional)")
+    s.add_argument("--fee-evidence", default="", help="where and when the rates were read")
     s.add_argument("--years", type=float, default=3.0)
     s.add_argument("--seeds", type=int, default=20)
+    s.add_argument("--notional", default="1000", help="fixed USDT notional per trade")
     s.set_defaults(func=cmd_sanity_random)
     args = parser.parse_args(argv)
     try:

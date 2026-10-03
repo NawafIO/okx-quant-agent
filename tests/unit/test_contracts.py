@@ -18,6 +18,7 @@ from okxq.contracts import (
     Signal,
     TradeProposal,
 )
+from okxq.risk.policy import FROZEN_RISK_POLICY
 
 NOW = datetime(2026, 10, 2, 12, 0, tzinfo=UTC)
 
@@ -216,9 +217,7 @@ def test_round_trip_proposal() -> None:
         risk_amount="0.5",
         risk_pct_of_equity="0.005",
         leverage="1",
-        risk_checks=(
-            RiskCheckResult(check_id="RC-05", passed=True, observed="0.005", limit="0.005"),
-        ),
+        risk_checks=_checks(),
         verdict="APPROVED",
         expires_at=NOW + timedelta(seconds=60),
     )
@@ -229,15 +228,17 @@ def test_proposal_executability_requires_approval_and_freshness() -> None:
     """A stale or rejected proposal is unexecutable (architecture §19.2 controls 4-5)."""
 
     def build(verdict: str, expires: datetime) -> TradeProposal:
+        approved = verdict == "APPROVED"
         return TradeProposal(
             proposal_id=uuid4(),
             env="PAPER",
             signal=_signal(),
-            qty_base="1",
-            notional_quote="100",
-            risk_amount="2",
-            risk_pct_of_equity="0.005",
+            qty_base="1" if approved else "0",
+            notional_quote="100" if approved else "0",
+            risk_amount="2" if approved else "0",
+            risk_pct_of_equity="0.005" if approved else "0",
             leverage="1",
+            risk_checks=_checks(fail=None if approved else "RC-05"),
             verdict=verdict,
             expires_at=expires,
         )
@@ -245,6 +246,76 @@ def test_proposal_executability_requires_approval_and_freshness() -> None:
     assert build("APPROVED", NOW + timedelta(seconds=60)).is_executable_at(NOW) is True
     assert build("APPROVED", NOW - timedelta(seconds=1)).is_executable_at(NOW) is False
     assert build("REJECTED", NOW + timedelta(seconds=60)).is_executable_at(NOW) is False
+
+
+def _checks(fail: str | None = None) -> tuple[RiskCheckResult, ...]:
+    return tuple(
+        RiskCheckResult(check_id=c, passed=c != fail) for c in FROZEN_RISK_POLICY.required_checks
+    )
+
+
+def _proposal(**over: object) -> TradeProposal:
+    fields: dict[str, object] = {
+        "proposal_id": uuid4(),
+        "env": "PAPER",
+        "signal": _signal(),
+        "qty_base": "0.25",
+        "notional_quote": "25",
+        "risk_amount": "0.5",
+        "risk_pct_of_equity": "0.005",
+        "leverage": "1",
+        "risk_checks": _checks(),
+        "verdict": "APPROVED",
+        "expires_at": NOW + timedelta(seconds=60),
+    }
+    return TradeProposal(**(fields | over))
+
+
+REJECTED_ZERO = {
+    "qty_base": "0",
+    "notional_quote": "0",
+    "risk_amount": "0",
+    "risk_pct_of_equity": "0",
+    "verdict": "REJECTED",
+}
+
+
+@pytest.mark.parametrize(
+    "over",
+    [
+        {"risk_checks": _checks(fail="RC-07")},  # a failed check
+        {"risk_checks": _checks()[:-1]},  # a check missing
+        {"risk_checks": (*_checks(), RiskCheckResult(check_id="RC-01", passed=True))},  # dup
+        {"risk_checks": (*_checks()[:-1], RiskCheckResult(check_id="RC-99", passed=True))},
+        {"risk_checks": ()},
+        {"qty_base": "0"},
+        {"risk_pct_of_equity": "0.0051"},
+        {"leverage": "4"},
+        {"leverage": "0.5"},
+    ],
+)
+def test_an_approved_proposal_cannot_disagree_with_its_checks(over: dict[str, object]) -> None:
+    with pytest.raises(ValidationError):
+        _proposal(**over)
+
+
+@pytest.mark.parametrize(
+    "over",
+    [
+        REJECTED_ZERO | {"risk_checks": _checks()},  # rejected with nothing failed
+        REJECTED_ZERO | {"risk_checks": _checks(fail="RC-05"), "qty_base": "0.25"},
+        REJECTED_ZERO | {"risk_checks": _checks(fail="RC-05"), "notional_quote": "1"},
+        REJECTED_ZERO | {"risk_checks": _checks(fail="RC-05"), "risk_amount": "1"},
+    ],
+)
+def test_a_rejected_proposal_has_zero_size_and_a_reason(over: dict[str, object]) -> None:
+    with pytest.raises(ValidationError):
+        _proposal(**over)
+
+
+def test_valid_proposals_of_both_verdicts_construct() -> None:
+    assert _proposal().verdict == "APPROVED"
+    assert _proposal(**REJECTED_ZERO, risk_checks=_checks(fail="RC-01")).verdict == "REJECTED"
 
 
 # --- property test ----------------------------------------------------------------------

@@ -82,8 +82,17 @@ def main() -> int:
         ),
         encoding="utf-8",
     )
+    # Verbatim rows, filtered to the instruments we store; tiers truncated to the first 5
+    # (the engine uses tier 1). The full SWAP listing is ~1.3 MB of irrelevant rows.
+    kept = [r for r in raw_instruments["data"] if r["instId"] in specs]
+    tiers = {
+        k: {**v, "data": sorted(v["data"], key=lambda t: int(t["tier"]))[:5]}  # type: ignore[index]
+        for k, v in raw_tiers.items()
+    }
     out.with_suffix(".raw.json").write_text(
-        json.dumps({"instruments": raw_instruments, "position_tiers": raw_tiers}, indent=1),
+        json.dumps(
+            {"instruments": {**raw_instruments, "data": kept}, "position_tiers": tiers}, indent=1
+        ),
         encoding="utf-8",
     )
     print(f"{len(specs)} specs -> {out}")

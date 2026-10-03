@@ -22,6 +22,7 @@ from decimal import ROUND_HALF_UP, Decimal
 from typing import Any, Protocol
 
 from okxq.backtest import metrics as m
+from okxq.backtest.costs import cost_config_sha
 from okxq.backtest.engine import BacktestEngine, BacktestResult, EngineConfig, Strategy
 from okxq.backtest.gates import (
     FROZEN,
@@ -33,7 +34,7 @@ from okxq.backtest.gates import (
     evaluate,
 )
 from okxq.backtest.holdout import HoldoutSealedError
-from okxq.backtest.sizing import Sizer
+from okxq.backtest.sizing import RESEARCH_SIZING
 from okxq.backtest.trials import Trial, TrialLog
 from okxq.backtest.types import G9_STRESS, BarSeries, FundingRate, InstrumentSpec
 from okxq.env.profiles import EnvProfile
@@ -131,7 +132,6 @@ class ResearchProtocol:
         data: DataProvider,
         specs: Mapping[str, InstrumentSpec],
         config: EngineConfig,
-        sizer: Sizer,
         profile: EnvProfile,
         warmup_ms: int,
     ) -> None:
@@ -139,9 +139,10 @@ class ResearchProtocol:
         self._data = data
         self._specs = specs
         self._config = config
-        self._sizer = sizer
-        # The trial log and the gates are not parameters: both are fixed per environment
-        # and per project, so neither can be swapped for a friendlier one.
+        # The trial log, the gates and the sizing are not parameters: each is fixed per
+        # environment or per project, so none can be swapped for a friendlier one. Sizing
+        # especially: a smaller risk fraction passes G-1 without any change in edge.
+        self._sizer = RESEARCH_SIZING.sizer()
         self._trials = TrialLog(profile)
         self._warmup = warmup_ms
         self._g = FROZEN
@@ -190,6 +191,7 @@ class ResearchProtocol:
                 per_period_sharpe=m.per_period_sharpe(rets),
                 profit_factor=None if pf is None else str(pf),
                 result_digest=result.digest(),
+                sizing_sha=RESEARCH_SIZING.sha256(),
             )
         )
         return Evaluated(params, result, summary, annual)
@@ -331,6 +333,9 @@ class ResearchProtocol:
             trials=self._trials.stats(),
             stressed_full=stressed_full,
             stressed_oos=stressed_wf.oos,
+            fee_provenance=str(self._config.fees.provenance),
+            cost_config_sha=cost_config_sha(self._config),
+            sizing_sha=RESEARCH_SIZING.sha256(),
         )
         return ProtocolResult(evaluate(inputs), final.params if final else None, wf)
 
