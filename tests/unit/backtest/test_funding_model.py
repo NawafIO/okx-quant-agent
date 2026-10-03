@@ -134,3 +134,20 @@ def test_model_output_is_clipped_to_the_fit_range() -> None:
     model = fm.FundingModel(a=1.0, b=0.0, lo=-0.001, hi=0.002, n_fit=3)
     assert model.rate(0.5) == 0.002
     assert model.rate(-0.5) == -0.001
+
+
+def test_an_unscored_instrument_is_never_validated_by_omission() -> None:
+    """Checkpoint-3 finding 4: B has too few settlements to score. A's pass must not carry
+    B along, and B must not receive a modelled series."""
+    a = instrument("A", 1, 8)
+    mark_b, index_b, realised_b = instrument("B", 2, 8)
+    report = fm.validate({"A": a, "B": (mark_b, index_b, realised_b[:5])})
+    assert report.verdict is fm.FundingVerdict.PARTIAL
+    assert report.validated == {"A"}
+
+
+def test_an_escalated_model_validates_nothing() -> None:
+    data = {"A": instrument("A", 1, 8), "B": instrument("B", 2, 8, related=False)}
+    report = fm.validate(data)
+    assert report.verdict is fm.FundingVerdict.ESCALATE
+    assert report.validated == frozenset()

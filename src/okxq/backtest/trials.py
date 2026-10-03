@@ -22,6 +22,7 @@ from typing import Any
 
 from okxq.audit.chain import GENESIS_HASH, AuditChain, read_chain, verify_chain
 from okxq.backtest.gates import TrialStats
+from okxq.env.profiles import EnvProfile
 
 TRIAL_KIND = "trial"
 
@@ -48,11 +49,20 @@ class Trial:
 
 
 class TrialLog:
-    def __init__(self, path: Path) -> None:
+    """One trial log per environment, at a path derived from the profile - never a path the
+    caller picks, so a fresh file cannot quietly reset N to zero (checkpoint-3 finding 2)."""
+
+    def __init__(self, profile: EnvProfile) -> None:
+        path = profile.state_db.parent / "trials.jsonl"
+        path.parent.mkdir(parents=True, exist_ok=True)
         self._path = path
         if path.exists():
             verify_chain(path)
         self._chain = AuditChain(path)
+
+    @property
+    def path(self) -> Path:
+        return self._path
 
     def record(self, trial: Trial) -> None:
         payload = {

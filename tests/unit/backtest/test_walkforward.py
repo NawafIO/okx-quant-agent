@@ -12,6 +12,7 @@ from typing import Any
 
 import pytest
 
+from okxq.audit.chain import read_chain
 from okxq.backtest.engine import EngineConfig, StrategyContext
 from okxq.backtest.gates import FROZEN, Verdict
 from okxq.backtest.holdout import HoldoutSealedError
@@ -19,6 +20,7 @@ from okxq.backtest.sizing import ProvisionalFixedFractionalSizer
 from okxq.backtest.trials import TrialLog
 from okxq.backtest.types import Action, BarSeries, FundingRate, OrderIntent
 from okxq.backtest.walkforward import ResearchProtocol, make_folds
+from okxq.env.profiles import build_profile
 
 from .conftest import FEES, FLOOR_SLIPPAGE, INST, SPEC
 
@@ -107,14 +109,13 @@ class Factory:
     version: str = "1"
 
     def build(self, params: dict[str, Any]) -> Momentum:
-        return Momentum(**params)
+        return Momentum(lookback=params["lookback"], hold=params["hold"])
 
 
 GRID = [{"lookback": 6, "hold": 3}, {"lookback": 12, "hold": 6}]
 
 
 def protocol(tmp_path: Path) -> tuple[ResearchProtocol, TrialLog]:
-    log = TrialLog(tmp_path / "trials.jsonl")
     cfg = EngineConfig(
         fees=FEES,
         slippage=FLOOR_SLIPPAGE,
@@ -128,10 +129,10 @@ def protocol(tmp_path: Path) -> tuple[ResearchProtocol, TrialLog]:
         specs={INST: SPEC},
         config=cfg,
         sizer=ProvisionalFixedFractionalSizer(Decimal("0.01"), Decimal(3)),
-        trials=log,
+        profile=build_profile("PAPER", root=tmp_path),
         warmup_ms=30 * H4,
     )
-    return proto, log
+    return proto, proto.trials
 
 
 def test_folds_follow_the_frozen_12_3_3_layout() -> None:
@@ -150,10 +151,11 @@ def test_walk_forward_cannot_reach_the_holdout() -> None:
 def test_protocol_counts_every_configuration_it_evaluated(tmp_path: Path) -> None:
     proto, log = protocol(tmp_path)
     result = proto.run(GRID, START, END)
-    # 2 folds x (2 selection + 1 oos) + final selection 2 + perturbations
-    # (lookback, hold each x0.8/x1.2 = 4) + stress full 1 + stress oos 2 = 15
-    assert log.stats().n_trials == 15
-    assert result.report.n_trials == 15
+    # 2 folds x (2 selection + 1 oos) + final selection 2
+    # + perturbations: (lookback, hold) x (0.8, 1.2) x 2 folds' OOS = 8
+    # + stress full 1 + stress oos 2 = 19
+    assert log.stats().n_trials == 19
+    assert result.report.n_trials == 19
     assert {o.gate for o in result.report.outcomes} == {f"G-{i}" for i in range(1, 10)}
     assert result.report.gates_sha256 == FROZEN.sha256()
     # A random walk has no edge; whatever the verdict, it must not be ACCEPT.
@@ -180,11 +182,51 @@ def test_the_oos_curve_is_stitched_without_a_reset(tmp_path: Path) -> None:
     assert second.summary.equity[0] == first.summary.equity[-1]
 
 
-def test_integer_perturbation_that_rounds_to_itself_is_reported(tmp_path: Path) -> None:
+def test_g6_perturbs_selected_params_out_of_sample_only(tmp_path: Path) -> None:
+    """Checkpoint-3 finding 3: every perturbation run is on a fold's OOS window."""
+    proto, log = protocol(tmp_path)
+    wf = proto.walk_forward(GRID, START, END)
+    oos_windows = {(fr.fold.test_start_ms, fr.fold.test_end_ms) for fr in wf.folds}
+    perts = proto.perturb(wf, START, END)
+    assert perts
+    assert all(not p.untestable for p in perts)
+    records = [r for r in read_chain(log.path) if r.payload["purpose"] == "perturbation"]
+    assert records
+    assert {tuple(r.payload["window"]) for r in records} <= oos_windows
+
+
+def test_a_number_hidden_in_a_string_makes_g6_invalid(tmp_path: Path) -> None:
+    """Checkpoint-3 finding 6."""
+    from okxq.backtest.gates import Status, g6
+
     proto, _ = protocol(tmp_path)
-    perts = proto.perturb({"lookback": 2, "hold": 3}, utc(2023, 1), utc(2023, 7))
-    flags = {(p.param, str(p.factor)): p.unperturbable for p in perts}
-    assert flags[("lookback", "0.80")] is True  # 1.6 rounds back to 2
-    assert flags[("lookback", "1.20")] is True  # 2.4 rounds back to 2
-    assert flags[("hold", "0.80")] is False  # 2.4 -> 2
-    assert flags[("hold", "1.20")] is False  # 3.6 -> 4
+    grid = [{"lookback": 6, "hold": 3, "stop": "0.05"}]
+    wf = proto.walk_forward(grid, START, END)
+    perts = proto.perturb(wf, START, END)
+    assert any(p.untestable and p.param == "stop" for p in perts)
+    assert g6(perts).status is Status.INVALID
+
+
+@pytest.mark.parametrize(
+    ("values", "kind"),
+    [
+        ([6, 12], "numeric"),
+        ([True], "categorical"),
+        (["fast"], "categorical"),
+        (["0.05"], "untestable"),
+        ([(20, 50)], "untestable"),
+        ([6, "x"], "untestable"),
+    ],
+)
+def test_param_kinds(values: list[Any], kind: str) -> None:
+    from okxq.backtest.walkforward import _param_kind
+
+    assert _param_kind(values) == kind
+
+
+def test_integer_scaling_rounds_half_up() -> None:
+    from okxq.backtest.walkforward import _scale
+
+    assert _scale(2, Decimal("0.8")) == 2  # 1.6 -> 2: unperturbable
+    assert _scale(3, Decimal("1.2")) == 4  # 3.6 -> 4
+    assert _scale(5, Decimal("0.8")) == 4

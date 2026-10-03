@@ -196,5 +196,18 @@ def test_g9_checks_the_oos_gate_under_stress() -> None:
 
 
 def test_holdout_evaluation() -> None:
-    assert g.evaluate_holdout(GOOD).verdict is Verdict.ACCEPT
-    assert g.evaluate_holdout(RunSummary.of(GOOD_PNLS[:10], GOOD_CURVE)).verdict is Verdict.INVALID
+    assert g.evaluate_holdout(GOOD, GOOD).verdict is Verdict.ACCEPT
+    few = RunSummary.of(GOOD_PNLS[:10], GOOD_CURVE)
+    assert g.evaluate_holdout(few, few).verdict is Verdict.INVALID
+
+
+def test_holdout_must_survive_concentration_and_cost_stress() -> None:
+    """Checkpoint-3 finding 10: the promotion decision includes G-7 and G-9."""
+    lucky = RunSummary.of([D(100)] + [D(1)] * 59 + [D(-1)] * 40, GOOD_CURVE)
+    r = g.evaluate_holdout(lucky, lucky)
+    assert r.verdict is Verdict.DISCARD
+    assert {o.gate for o in r.outcomes if o.status is Status.FAIL} >= {"G-7"}
+    fragile = RunSummary.of([D(3)] * 40 + [D(-2)] * 60, GOOD_CURVE)  # PF 1.0 under stress
+    r = g.evaluate_holdout(GOOD, fragile)
+    assert r.verdict is Verdict.DISCARD
+    assert {o.gate: o.status for o in r.outcomes}["G-9"] is Status.FAIL

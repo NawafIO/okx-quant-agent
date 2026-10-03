@@ -26,7 +26,6 @@ from okxq.backtest.engine import BacktestEngine, BacktestResult, EngineConfig, S
 from okxq.backtest.gates import (
     FROZEN,
     FoldIS,
-    FrozenGates,
     GateInputs,
     GateReport,
     Perturbation,
@@ -37,6 +36,7 @@ from okxq.backtest.holdout import HoldoutSealedError
 from okxq.backtest.sizing import Sizer
 from okxq.backtest.trials import Trial, TrialLog
 from okxq.backtest.types import G9_STRESS, BarSeries, FundingRate, InstrumentSpec
+from okxq.env.profiles import EnvProfile
 
 Params = dict[str, Any]
 #: (start_ms, end_ms) -> bars and funding covering that window plus any warm-up before it.
@@ -70,17 +70,17 @@ def _add_months(ms: int, months: int) -> int:
     return int(d.replace(year=d.year + y, month=mo + 1).timestamp()) * 1000
 
 
-def make_folds(start_ms: int, end_ms: int, gates: FrozenGates = FROZEN) -> list[Fold]:
+def make_folds(start_ms: int, end_ms: int) -> list[Fold]:
     """Rolling windows: train ``wf_train_months``, test the next ``wf_test_months``, step
     ``wf_step_months``. Refuses any span reaching the sealed holdout."""
-    if end_ms > gates.holdout_start_ms:
+    if end_ms > FROZEN.holdout_start_ms:
         raise HoldoutSealedError("walk-forward span reaches the sealed holdout")
     folds: list[Fold] = []
     k = 0
     while True:
-        train_start = _add_months(start_ms, k * gates.wf_step_months)
-        train_end = _add_months(train_start, gates.wf_train_months)
-        test_end = _add_months(train_end, gates.wf_test_months)
+        train_start = _add_months(start_ms, k * FROZEN.wf_step_months)
+        train_end = _add_months(train_start, FROZEN.wf_train_months)
+        test_end = _add_months(train_end, FROZEN.wf_test_months)
         if test_end > end_ms:
             return folds
         folds.append(Fold(k, train_start, train_end, train_end, test_end))
@@ -132,18 +132,23 @@ class ResearchProtocol:
         specs: Mapping[str, InstrumentSpec],
         config: EngineConfig,
         sizer: Sizer,
-        trials: TrialLog,
+        profile: EnvProfile,
         warmup_ms: int,
-        gates: FrozenGates = FROZEN,
     ) -> None:
         self._factory = factory
         self._data = data
         self._specs = specs
         self._config = config
         self._sizer = sizer
-        self._trials = trials
+        # The trial log and the gates are not parameters: both are fixed per environment
+        # and per project, so neither can be swapped for a friendlier one.
+        self._trials = TrialLog(profile)
         self._warmup = warmup_ms
-        self._g = gates
+        self._g = FROZEN
+
+    @property
+    def trials(self) -> TrialLog:
+        return self._trials
 
     # -- single evaluation, always logged -------------------------------------------------
 
@@ -222,7 +227,7 @@ class ResearchProtocol:
         pnls: list[Decimal] = []
         curve: list[Decimal] = []
         is_folds: list[FoldIS] = []
-        for fold in make_folds(start_ms, end_ms, self._g):
+        for fold in make_folds(start_ms, end_ms):
             if fixed is not None:
                 params = fixed.get(fold.index)
                 selected = None
@@ -254,26 +259,38 @@ class ResearchProtocol:
 
     # -- G-6 ------------------------------------------------------------------------------
 
-    def perturb(self, params: Params, start_ms: int, end_ms: int) -> list[Perturbation]:
-        out = []
+    def perturb(self, wf: WalkForwardResult, start_ms: int, end_ms: int) -> list[Perturbation]:
+        """Perturb each fold's SELECTED params and re-run that fold's OUT-OF-SAMPLE window,
+        pooled (checkpoint-3 finding 3). Perturbing the full-span fit over a span it was fit
+        on would measure robustness in-sample, which is exactly what G-6 must not do."""
+        selected = {fr.fold.index: fr.oos.params for fr in wf.folds if fr.oos is not None}
+        names = sorted({k for params in selected.values() for k in params})
+        out: list[Perturbation] = []
         step = self._g.g6_perturbation
-        for name, value in sorted(params.items()):
-            if isinstance(value, bool) or not isinstance(value, int | float | Decimal):
+        for name in names:
+            values = [p[name] for p in selected.values() if name in p]
+            kind = _param_kind(values)
+            if kind == "untestable":
+                out.append(Perturbation(name, Decimal(0), None, Decimal(0), untestable=True))
+                continue
+            if kind == "categorical":
+                out.append(Perturbation(name, Decimal(0), None, Decimal(0), unperturbable=True))
                 continue
             for factor in (1 - step, 1 + step):
-                moved = _scale(value, factor)
-                if moved == value:
+                moved = {
+                    i: p | {name: _scale(p[name], factor)} if name in p else p
+                    for i, p in selected.items()
+                }
+                if moved == selected:
                     out.append(Perturbation(name, factor, None, Decimal(0), unperturbable=True))
                     continue
-                ev = self.evaluate_params(
-                    params | {name: moved}, start_ms, end_ms, purpose="perturbation"
-                )
+                pert = self.walk_forward([], start_ms, end_ms, fixed=moved, purpose="perturbation")
                 out.append(
                     Perturbation(
                         name,
                         factor,
-                        m.profit_factor(list(ev.summary.pnls)),
-                        m.max_drawdown(list(ev.summary.equity)),
+                        m.profit_factor(list(pert.oos.pnls)),
+                        m.max_drawdown(list(pert.oos.equity)),
                     )
                 )
         return out
@@ -283,18 +300,12 @@ class ResearchProtocol:
     def run(self, grid: Sequence[Params], start_ms: int, end_ms: int) -> ProtocolResult:
         wf = self.walk_forward(grid, start_ms, end_ms)
         final = self.select(grid, start_ms, end_ms)
-        oos_span = (
-            (wf.folds[0].fold.test_start_ms, wf.folds[-1].fold.test_end_ms)
-            if wf.folds
-            else (start_ms, end_ms)
-        )
+        perts = self.perturb(wf, start_ms, end_ms)
         if final is None:
             empty = RunSummary.of([], [])
             full = stressed_full = empty
-            perts: list[Perturbation] = []
         else:
             full = final.summary
-            perts = self.perturb(final.params, *oos_span)
             stressed_full = self.evaluate_params(
                 final.params,
                 start_ms,
@@ -321,7 +332,30 @@ class ResearchProtocol:
             stressed_full=stressed_full,
             stressed_oos=stressed_wf.oos,
         )
-        return ProtocolResult(evaluate(inputs, self._g), final.params if final else None, wf)
+        return ProtocolResult(evaluate(inputs), final.params if final else None, wf)
+
+
+def _param_kind(values: Sequence[Any]) -> str:
+    """numeric | categorical | untestable. Numbers hidden in strings or containers are
+    untestable - G-6 goes INVALID rather than silently skipping them (finding 6)."""
+    kinds = set()
+    for v in values:
+        if isinstance(v, bool):
+            kinds.add("categorical")
+        elif isinstance(v, int | float | Decimal):
+            kinds.add("numeric")
+        elif isinstance(v, str):
+            try:
+                Decimal(v)
+            except ArithmeticError:
+                kinds.add("categorical")
+            else:
+                kinds.add("untestable")
+        else:
+            kinds.add("untestable")
+    if "untestable" in kinds or len(kinds) > 1:
+        return "untestable"
+    return kinds.pop() if kinds else "categorical"
 
 
 def _scale(value: int | float | Decimal, factor: Decimal) -> int | float | Decimal:

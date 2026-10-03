@@ -58,6 +58,9 @@ POLICY = ValidationPolicy()
 
 class FundingVerdict(StrEnum):
     PASS = "PASS"  # noqa: S105 - a verdict, not a credential
+    #: Every SCORED instrument passed, but some could not be scored. Only the scored-and-
+    #: passed ones may receive a modelled series (checkpoint-3 finding 4).
+    PARTIAL = "PARTIAL"
     ESCALATE = "ESCALATE"
     INSUFFICIENT_DATA = "INSUFFICIENT_DATA"
 
@@ -177,6 +180,13 @@ class ValidationReport:
     instruments: tuple[InstrumentValidation, ...]
     notes: tuple[str, ...]
 
+    @property
+    def validated(self) -> frozenset[str]:
+        """Instruments that were scored AND passed - the only ones a model may be written for."""
+        if self.verdict not in (FundingVerdict.PASS, FundingVerdict.PARTIAL):
+            return frozenset()
+        return frozenset(v.inst_id for v in self.instruments if v.passed)
+
 
 def _quantiles(xs: Sequence[float]) -> tuple[float, float, float]:
     s = sorted(xs)
@@ -263,5 +273,11 @@ def validate(
         )
     if not results:
         return ValidationReport(FundingVerdict.INSUFFICIENT_DATA, model, (), tuple(notes))
-    verdict = FundingVerdict.PASS if all(r.passed for r in results) else FundingVerdict.ESCALATE
+    scored = {r.inst_id for r in results}
+    if not all(r.passed for r in results):
+        verdict = FundingVerdict.ESCALATE
+    elif scored != set(data):
+        verdict = FundingVerdict.PARTIAL
+    else:
+        verdict = FundingVerdict.PASS
     return ValidationReport(verdict, model, tuple(results), tuple(notes))

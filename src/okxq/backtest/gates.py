@@ -28,8 +28,16 @@ from statistics import NormalDist
 
 from okxq.backtest import metrics as m
 from okxq.backtest.types import G9_STRESS
+from okxq.errors import SafetyError
 
 EULER_GAMMA = 0.5772156649015329
+
+#: SHA-256 of ``FrozenGates().canonical_json()``. Frozen at M2.
+PINNED_GATES_SHA256 = "48908f93c671a07134f1852e09f3773f99a7f2e8f3b58d07932d7c69591cbd0f"
+
+
+class GateTamperError(SafetyError):
+    """Someone tried to evaluate with gate definitions other than the frozen ones."""
 
 
 @dataclass(frozen=True)
@@ -71,7 +79,17 @@ class FrozenGates:
     wf_flat_at_fold_boundary: bool = True
     # Sealed holdout: open-ended, so archives appended later stay sealed too (A-3).
     holdout_start_utc: str = "2025-10-01T00:00:00+00:00"
-    holdout_must_pass: tuple[str, ...] = ("G-1", "G-3", "G-4")
+    holdout_must_pass: tuple[str, ...] = ("G-1", "G-3", "G-4", "G-7", "G-9")
+
+    def __post_init__(self) -> None:
+        # A researcher cannot build a lenient copy: any FrozenGates whose definitions differ
+        # from the pin refuses to exist (checkpoint-3 finding 2). Changing the pin is a
+        # reviewed commit of its own; tests/guards/test_gates_frozen.py pins it a second time.
+        if self.sha256() != PINNED_GATES_SHA256:
+            raise GateTamperError(
+                "gate definitions differ from the frozen pin; thresholds may not be moved "
+                f"(got {self.sha256()})"
+            )
 
     def canonical_json(self) -> str:
         return json.dumps(asdict(self), sort_keys=True, separators=(",", ":"), default=str)
@@ -141,9 +159,12 @@ class Perturbation:
     factor: Decimal
     profit_factor: Decimal | None
     max_drawdown: Decimal
-    #: True when x(1 +/- 0.2) rounds back to the same value (small integers): reported, and
-    #: excluded from the gate rather than counted as a pass.
+    #: True when x(1 +/- 0.2) rounds back to the same value (small integers), or the
+    #: parameter is categorical (bool, enum string): reported, excluded, never a pass.
     unperturbable: bool = False
+    #: True for a parameter G-6 cannot honestly perturb - a numeric-looking string, a tuple,
+    #: a list. Makes G-6 INVALID: hiding a number in another type must not dodge the gate.
+    untestable: bool = False
 
 
 @dataclass(frozen=True)
@@ -220,7 +241,8 @@ def _fmt(x: object) -> str:
     return "undefined" if x is None else str(x)
 
 
-def g1(run: RunSummary, g: FrozenGates = FROZEN) -> GateOutcome:
+def g1(run: RunSummary) -> GateOutcome:
+    g = FROZEN
     if len(run.equity) < 2:
         return GateOutcome("G-1", Status.INVALID, "no equity curve", f"<= {g.g1_max_drawdown}")
     dd = m.max_drawdown(list(run.equity))
@@ -230,7 +252,8 @@ def g1(run: RunSummary, g: FrozenGates = FROZEN) -> GateOutcome:
     )
 
 
-def g2(run: RunSummary, g: FrozenGates = FROZEN) -> GateOutcome:
+def g2(run: RunSummary) -> GateOutcome:
+    g = FROZEN
     pf = m.profit_factor(list(run.pnls))
     if pf is None:
         return GateOutcome(
@@ -246,7 +269,8 @@ def g2(run: RunSummary, g: FrozenGates = FROZEN) -> GateOutcome:
     )
 
 
-def g3(run: RunSummary, g: FrozenGates = FROZEN) -> GateOutcome:
+def g3(run: RunSummary) -> GateOutcome:
+    g = FROZEN
     n = len(run.pnls)
     ok = n >= g.g3_min_trades
     return GateOutcome(
@@ -254,7 +278,8 @@ def g3(run: RunSummary, g: FrozenGates = FROZEN) -> GateOutcome:
     )
 
 
-def g4(oos: RunSummary, g: FrozenGates = FROZEN) -> GateOutcome:
+def g4(oos: RunSummary) -> GateOutcome:
+    g = FROZEN
     pf = m.profit_factor(list(oos.pnls))
     if pf is None:
         return GateOutcome("G-4", Status.INVALID, "undefined", f">= {g.g4_min_oos_profit_factor}")
@@ -264,7 +289,8 @@ def g4(oos: RunSummary, g: FrozenGates = FROZEN) -> GateOutcome:
     )
 
 
-def g5(oos: RunSummary, folds: Sequence[FoldIS], g: FrozenGates = FROZEN) -> GateOutcome:
+def g5(oos: RunSummary, folds: Sequence[FoldIS]) -> GateOutcome:
+    g = FROZEN
     limit = f">= {g.g5_min_oos_to_is_ratio} x IS"
     oos_pf = m.profit_factor(list(oos.pnls))
     weighted = [(f.profit_factor, f.n_trades) for f in folds if f.n_trades > 0]
@@ -281,11 +307,21 @@ def g5(oos: RunSummary, folds: Sequence[FoldIS], g: FrozenGates = FROZEN) -> Gat
     )
 
 
-def g6(perts: Sequence[Perturbation], g: FrozenGates = FROZEN) -> GateOutcome:
+def g6(perts: Sequence[Perturbation]) -> GateOutcome:
+    g = FROZEN
     limit = (
         f"PF >= {g.g6_min_profit_factor} and MaxDD <= {g.g6_max_drawdown} "
         f"for every +/-{g.g6_perturbation}"
     )
+    dodged = sorted({p.param for p in perts if p.untestable})
+    if dodged:
+        return GateOutcome(
+            "G-6",
+            Status.INVALID,
+            f"untestable parameters {dodged}",
+            limit,
+            "numeric values must be int/float/Decimal so they can be perturbed",
+        )
     live = [p for p in perts if not p.unperturbable]
     if not live:
         return GateOutcome("G-6", Status.INVALID, "no perturbable parameter", limit)
@@ -311,7 +347,8 @@ def g6(perts: Sequence[Perturbation], g: FrozenGates = FROZEN) -> GateOutcome:
     )
 
 
-def g7(full: RunSummary, oos: RunSummary, g: FrozenGates = FROZEN) -> GateOutcome:
+def g7(full: RunSummary, oos: RunSummary) -> GateOutcome:
+    g = FROZEN
     limit = f"top {g.g7_top_n} <= {g.g7_max_share} of net profit"
     shares = [m.top_n_share(list(r.pnls), g.g7_top_n) for r in (full, oos)]
     if any(s is None for s in shares):
@@ -325,7 +362,8 @@ def g7(full: RunSummary, oos: RunSummary, g: FrozenGates = FROZEN) -> GateOutcom
     )
 
 
-def g8(oos: RunSummary, trials: TrialStats, g: FrozenGates = FROZEN) -> GateOutcome:
+def g8(oos: RunSummary, trials: TrialStats) -> GateOutcome:
+    g = FROZEN
     dsr = deflated_sharpe_ratio(list(oos.returns), trials.n_trials, trials.sharpe_variance)
     limit = f">= {g.g8_min_dsr} (N={trials.n_trials})"
     if dsr is None:
@@ -343,16 +381,17 @@ def _verdict(outcomes: Sequence[GateOutcome]) -> Verdict:
     return Verdict.ACCEPT
 
 
-def evaluate(inputs: GateInputs, g: FrozenGates = FROZEN) -> GateReport:
+def evaluate(inputs: GateInputs) -> GateReport:
+    g = FROZEN
     """Evaluate G-1..G-9. Any FAIL discards; any INVALID makes the strategy not evaluable."""
     stressed = tuple(
         o
         for o in (
-            g1(inputs.stressed_full, g),
-            g2(inputs.stressed_full, g),
-            g3(inputs.stressed_full, g),
-            g4(inputs.stressed_oos, g),
-            g7(inputs.stressed_full, inputs.stressed_oos, g),
+            g1(inputs.stressed_full),
+            g2(inputs.stressed_full),
+            g3(inputs.stressed_full),
+            g4(inputs.stressed_oos),
+            g7(inputs.stressed_full, inputs.stressed_oos),
         )
         if o.gate in g.g9_must_pass
     )
@@ -364,14 +403,14 @@ def evaluate(inputs: GateInputs, g: FrozenGates = FROZEN) -> GateReport:
         g.g9_stress,
     )
     outcomes = (
-        g1(inputs.full, g),
-        g2(inputs.full, g),
-        g3(inputs.full, g),
-        g4(inputs.oos, g),
-        g5(inputs.oos, inputs.is_folds, g),
-        g6(inputs.perturbations, g),
-        g7(inputs.full, inputs.oos, g),
-        g8(inputs.oos, inputs.trials, g),
+        g1(inputs.full),
+        g2(inputs.full),
+        g3(inputs.full),
+        g4(inputs.oos),
+        g5(inputs.oos, inputs.is_folds),
+        g6(inputs.perturbations),
+        g7(inputs.full, inputs.oos),
+        g8(inputs.oos, inputs.trials),
         g9,
     )
     return GateReport(
@@ -392,10 +431,19 @@ def _verdict_status(bad: Sequence[GateOutcome]) -> Status:
     return Status.PASS
 
 
-def evaluate_holdout(run: RunSummary, g: FrozenGates = FROZEN) -> GateReport:
-    """The single holdout read: must pass G-1, G-3 (a 10-trade "pass" means nothing) and the
-    OOS profit-factor floor G-4. If it fails, the strategy is dead - never re-tuned."""
-    outcomes = tuple(
-        o for o in (g1(run, g), g3(run, g), g4(run, g)) if o.gate in g.holdout_must_pass
+def evaluate_holdout(run: RunSummary, stressed: RunSummary) -> GateReport:
+    """The single holdout read. Must pass G-1, G-3 (a 10-trade "pass" means nothing), the OOS
+    PF floor G-4 and concentration G-7, and still pass them under G-9 cost stress. If it
+    fails, the strategy is dead - never re-tuned on the holdout."""
+    g = FROZEN
+    base = (g1(run), g3(run), g4(run), g7(run, run))
+    under_stress = (g1(stressed), g3(stressed), g4(stressed), g7(stressed, stressed))
+    bad = [o for o in under_stress if o.status is not Status.PASS]
+    g9 = GateOutcome(
+        "G-9",
+        _verdict_status(bad),
+        "; ".join(f"{o.gate} {o.status}: {o.observed}" for o in bad) or "all held",
+        g.g9_stress,
     )
-    return GateReport(outcomes, _verdict(outcomes), g.sha256(), "", 0)
+    outcomes = tuple(o for o in (*base, g9) if o.gate in g.holdout_must_pass)
+    return GateReport(outcomes, _verdict(outcomes), g.sha256(), "", 0, stressed=under_stress)

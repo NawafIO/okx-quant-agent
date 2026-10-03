@@ -9,9 +9,11 @@ from decimal import Decimal
 from okxq.backtest.engine import BacktestResult
 from okxq.backtest.reference_strategies import RandomEntry
 from okxq.backtest.sizing import ProvisionalFixedFractionalSizer
-from okxq.backtest.types import BarSeries, FundingRate
+from okxq.backtest.types import BarSeries, FillRecord, FundingRate
 
 from .conftest import INST, engine, series, ts
+
+INTRABAR = {"stop", "take_profit", "liquidation"}
 
 N = 400
 CUT = 250
@@ -125,3 +127,67 @@ def test_random_entry_seed_is_the_only_source_of_randomness() -> None:
     b = run(BARS, FUND, end=ts(N), seed=12)
     assert a.digest() != b.digest()
     assert INST in {t.inst_id for t in a.trades}
+
+
+def corrupt_from_open(bars: BarSeries, cut: int) -> BarSeries:
+    """Corrupt bar ``cut``'s high/low/close/volume and everything after it, but keep its OPEN:
+    the open is the price AT T_open, which a fill at T_open legitimately uses."""
+
+    def mangle(col: tuple[Decimal, ...], factor: str, first: int) -> tuple[Decimal, ...]:
+        return col[:first] + tuple(x * Decimal(factor) for x in col[first:])
+
+    return replace(
+        bars,
+        open=mangle(bars.open, "3", cut + 1),
+        high=mangle(bars.high, "5", cut),
+        low=mangle(bars.low, "0.2", cut),
+        close=mangle(bars.close, "0.4", cut),
+        volume_base=mangle(bars.volume_base, "0.01", cut),
+    )
+
+
+def test_multi_instrument_decisions_at_t_open_ignore_the_bar_that_follows() -> None:
+    """General invariant across instruments: nothing known at T_open - fills at the open,
+    rejections - may depend on any instrument's data after T_open.
+
+    NOTE: this does NOT catch checkpoint-3 finding 1 on the old engine (verified): corrupting
+    A also fires A's own stops, which frees margin and masks the leak. The targeted
+    regression for that defect is ``test_margin_check_at_t_open_cannot_see_another_
+    instruments_bar`` in test_engine.py, which does fail on the old engine.
+    """
+    from okxq.backtest.sizing import ProvisionalFixedFractionalSizer
+
+    a = replace(random_walk(N, seed=21), inst_id="A-USDT-SWAP")
+    b = replace(random_walk(N, seed=22), inst_id="B-USDT-SWAP")
+    fund = funding(N, seed=23)
+    # Each position is capped at 45% of equity at 1x, so two just fit. A corrupted 60% drop
+    # in one instrument's close would flip the other's margin check - if the engine read it.
+    tight = ProvisionalFixedFractionalSizer(Decimal("0.5"), Decimal(1), Decimal("0.45"))
+
+    def go(sa: BarSeries, sb: BarSeries) -> BacktestResult:
+        return engine(
+            {"A-USDT-SWAP": sa, "B-USDT-SWAP": sb},
+            funding={"A-USDT-SWAP": fund, "B-USDT-SWAP": fund},
+            start=ts(20),
+            end=ts(N),
+            sizer=tight,
+            participation_cap="0.5",
+        ).run(RandomEntry(seed=3, p_entry=0.3, hold_bars=3))
+
+    clean = go(a, b)
+    assert {f.inst_id for f in clean.fills} == {"A-USDT-SWAP", "B-USDT-SWAP"}
+    for cut in range(30, N - 10, 7):
+        dirty = go(corrupt_from_open(a, cut), corrupt_from_open(b, cut))
+        t = ts(cut)
+
+        def known_at_open(f: FillRecord, t: int = t) -> bool:
+            # Intrabar exits are stamped with their bar's T_open but resolve from its
+            # high/low, which is legitimately unknown at T_open.
+            return f.ts_ms < t or (f.ts_ms == t and f.reason not in INTRABAR)
+
+        assert [f for f in clean.fills if known_at_open(f)] == [
+            f for f in dirty.fills if known_at_open(f)
+        ]
+        assert [x for x in clean.rejections if x.ts_ms <= t] == [
+            x for x in dirty.rejections if x.ts_ms <= t
+        ]

@@ -16,6 +16,7 @@ from okxq.backtest.trials import Trial, TrialLog
 from okxq.data.manifest import PartitionKey
 from okxq.data.okx_public import TIMEFRAME_MS, Bar, FundingPoint
 from okxq.data.store import ParquetStore
+from okxq.env.profiles import build_profile
 from okxq.errors import AuditChainError, SafetyError
 
 HOUR = TIMEFRAME_MS["1h"]
@@ -31,19 +32,22 @@ def trial(sr: float | None, purpose: str = "selection") -> Trial:
 
 
 def test_trial_log_counts_every_trial_and_their_sharpe_variance(tmp_path: Path) -> None:
-    log = TrialLog(tmp_path / "trials.jsonl")
+    log = TrialLog(build_profile("PAPER", root=tmp_path))
     assert log.stats().n_trials == 0
     for sr in (0.01, 0.03, None, 0.05):
         log.record(trial(sr))
     st = log.stats()
     assert st.n_trials == 4  # an undefined Sharpe still counts as a trial tried
     assert st.sharpe_variance == pytest.approx(0.0004)  # sample variance of .01, .03, .05
-    assert st.chain_head == read_chain(tmp_path / "trials.jsonl")[-1].hash
+    assert st.chain_head == read_chain(log.path)[-1].hash
+    # The path is the environment's, not the caller's: a second handle sees the same N.
+    assert TrialLog(build_profile("PAPER", root=tmp_path)).stats().n_trials == 4
 
 
 def test_editing_the_trial_log_is_detected(tmp_path: Path) -> None:
-    path = tmp_path / "trials.jsonl"
-    log = TrialLog(path)
+    profile = build_profile("PAPER", root=tmp_path)
+    log = TrialLog(profile)
+    path = log.path
     for sr in (0.01, 0.02, 0.03):
         log.record(trial(sr))
     lines = path.read_text(encoding="utf-8").splitlines()
@@ -52,7 +56,7 @@ def test_editing_the_trial_log_is_detected(tmp_path: Path) -> None:
     with pytest.raises(AuditChainError):
         log.stats()
     with pytest.raises(AuditChainError):
-        TrialLog(path)
+        TrialLog(profile)
 
 
 # --- store fixture -----------------------------------------------------------------------
@@ -137,13 +141,13 @@ def test_calibration_cannot_read_last_price_bars(store: ParquetStore, tmp_path: 
 
 
 def test_holdout_is_unsealed_exactly_once_per_strategy(store: ParquetStore, tmp_path: Path) -> None:
-    path = tmp_path / "holdout.jsonl"
-    key = h.unseal_holdout(path, "trend-v1", "abc123")
+    profile = build_profile("PAPER", root=tmp_path)
+    key = h.unseal_holdout(profile, "trend-v1", "abc123")
     assert len(h.load_holdout_bars(key, store, INST, "1h", HOLDOUT + 48 * HOUR)) == 48
     with pytest.raises(h.HoldoutSealedError, match="exactly once"):
-        h.unseal_holdout(path, "trend-v1", "def456")  # re-tuned code: still refused
-    h.unseal_holdout(path, "other-v1", "abc123")  # a different strategy has its own read
-    rec = read_chain(path)[0]
+        h.unseal_holdout(profile, "trend-v1", "def456")  # re-tuned code: still refused
+    h.unseal_holdout(profile, "other-v1", "abc123")  # a different strategy has its own read
+    rec = read_chain(profile.audit_log)[0]
     assert rec.payload["gates_sha256"] == FROZEN.sha256()
     assert json.loads(rec.to_json())["kind"] == "holdout_unseal"
 

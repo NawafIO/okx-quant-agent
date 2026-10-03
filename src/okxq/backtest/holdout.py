@@ -23,15 +23,15 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from decimal import Decimal
-from pathlib import Path
 
 import duckdb
 
 from okxq.audit.chain import AuditChain, read_chain
-from okxq.backtest.gates import FROZEN, FrozenGates
+from okxq.backtest.gates import FROZEN
 from okxq.backtest.types import BarSeries, FundingRate
 from okxq.data.okx_public import TIMEFRAME_MS
 from okxq.data.store import ParquetStore
+from okxq.env.profiles import EnvProfile
 from okxq.errors import SafetyError
 
 CALIBRATION_PRICE_TYPES = frozenset({"mark", "index"})
@@ -45,11 +45,11 @@ class HoldoutSealedError(SafetyError):
     """Research code attempted to read the sealed holdout, or to read it twice."""
 
 
-def _check_sealed(end_ms: int, gates: FrozenGates) -> None:
-    if end_ms > gates.holdout_start_ms:
+def _check_sealed(end_ms: int) -> None:
+    if end_ms > FROZEN.holdout_start_ms:
         raise HoldoutSealedError(
             f"requested data up to {end_ms} reaches the sealed holdout starting "
-            f"{gates.holdout_start_utc}; research may read only before it"
+            f"{FROZEN.holdout_start_utc}; research may read only before it"
         )
 
 
@@ -115,11 +115,9 @@ def load_research_bars(
     timeframe: str,
     start_ms: int,
     end_ms: int,
-    *,
-    gates: FrozenGates = FROZEN,
 ) -> BarSeries:
     """Last-price bars closing in ``[start_ms, end_ms]``. Raises if that reaches the holdout."""
-    _check_sealed(end_ms, gates)
+    _check_sealed(end_ms)
     return _read_bars(store, inst_id, timeframe, "last", start_ms, end_ms)
 
 
@@ -128,11 +126,9 @@ def load_research_funding(
     inst_id: str,
     start_ms: int,
     end_ms: int,
-    *,
-    gates: FrozenGates = FROZEN,
 ) -> list[FundingRate]:
     """Realised funding where it exists, else the D1 modelled series, flagged as modelled."""
-    _check_sealed(end_ms, gates)
+    _check_sealed(end_ms)
     realised = _read_funding(store, REALISED_FUNDING, inst_id, start_ms, end_ms, False)
     have = {r.ts_ms for r in realised}
     modelled = [
@@ -195,10 +191,13 @@ class HoldoutKey:
     start_ms: int
 
 
-def unseal_holdout(
-    log_path: Path, strategy_id: str, code_sha: str, *, gates: FrozenGates = FROZEN
-) -> HoldoutKey:
-    """Record the single permitted holdout read for ``strategy_id``. Raises on a second."""
+def unseal_holdout(profile: EnvProfile, strategy_id: str, code_sha: str) -> HoldoutKey:
+    """Record the single permitted holdout read for ``strategy_id``. Raises on a second.
+
+    The record goes on the environment's own audit chain, not a caller-chosen file, so a
+    fresh path cannot buy a fresh "exactly once" (checkpoint-3 finding 2).
+    """
+    log_path = profile.audit_log
     if log_path.exists():
         for rec in read_chain(log_path):
             if rec.kind == UNSEAL_KIND and rec.payload.get("strategy_id") == strategy_id:
@@ -208,9 +207,9 @@ def unseal_holdout(
                 )
     AuditChain(log_path).append(
         UNSEAL_KIND,
-        {"strategy_id": strategy_id, "code_sha": code_sha, "gates_sha256": gates.sha256()},
+        {"strategy_id": strategy_id, "code_sha": code_sha, "gates_sha256": FROZEN.sha256()},
     )
-    return HoldoutKey(strategy_id, code_sha, gates.holdout_start_ms)
+    return HoldoutKey(strategy_id, code_sha, FROZEN.holdout_start_ms)
 
 
 def load_holdout_bars(

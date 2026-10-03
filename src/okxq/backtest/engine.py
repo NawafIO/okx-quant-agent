@@ -194,6 +194,8 @@ class _Pending:
     take_profit: Decimal | None = None
     leverage: Decimal = ONE
     ttl: int = 1
+    #: The lifecycle this entry order opened, once its first fill happens.
+    acc: _TradeAccumulator | None = None
 
 
 @dataclass(frozen=True)
@@ -243,6 +245,11 @@ class BacktestEngine:
         self._start = trade_start_ms
         self._end = end_ms
         self._check_provenance(specs)
+        if len({s.timeframe_ms for s in series.values()}) > 1:
+            raise BacktestConfigError(
+                "one timeframe per run: with mixed timeframes, bars closing at the same T open "
+                "at different instants and the cross-instrument execution order breaks"
+            )
         self._inst: dict[str, _Inst] = {}
         for inst_id in sorted(series):
             s = series[inst_id]
@@ -327,11 +334,14 @@ class BacktestEngine:
 
         for t_close in sorted(timeline):
             closed = sorted(timeline[t_close])
-            for inst_id in closed:
-                st = self._inst[inst_id]
+            states = [self._inst[k] for k in closed]
+            for st in states:
                 st.idx += 1
-                if t_close > self._start:
-                    self._execute_bar(st, final=t_close == last_bar_close[inst_id])
+            if t_close > self._start:
+                self._execute_instant(states, t_close, last_bar_close)
+            # Publication strictly AFTER every instrument's execution at T (Chief Advisor
+            # checkpoint-3 finding 1): no fill at T_open may see a close at T.
+            for st in states:
                 self._publish(st)
             if t_close < self._start:
                 continue
@@ -441,8 +451,9 @@ class BacktestEngine:
         if tp is not None and (tp - ref) * side.sign <= 0:
             self._reject(ts, intent.inst_id, "take_profit_on_wrong_side")
             return
-        exiting = any(p.kind == "exit" for p in st.pending)
-        if st.position is not None and not exiting:
+        # No reversal or re-entry in one step (checkpoint-3 finding 9): with a capped exit
+        # the new entry would merge into the old position and inherit its stop.
+        if st.position is not None:
             self._reject(ts, intent.inst_id, "already_positioned")
             return
         if any(p.kind == "entry" for p in st.pending):
@@ -474,23 +485,39 @@ class BacktestEngine:
         p = st.position
         return _FLAT if p is None else _Snap(p.side, p.qty, p.acc)
 
-    def _execute_bar(self, st: _Inst, *, final: bool) -> None:
+    def _execute_instant(
+        self, states: list[_Inst], t_close: int, last_bar_close: dict[str, int | None]
+    ) -> None:
+        """Execute every bar closing at ``t_close`` in time order ACROSS instruments.
+
+        All open fills (at T_open) happen before any instrument's intrabar event (inside
+        ``[T_open, T)``). Otherwise an entry on B at T_open could be margin-checked against
+        A's intrabar exit or A's close at T - look-ahead that also made results depend on
+        inst_id ordering (checkpoint-3 finding 1). Simultaneous entries at T_open are still
+        served in inst_id order when margin is short: that is capacity allocation at one
+        instant, not look-ahead, and it is deterministic.
+        """
+        snaps: dict[str, tuple[_Snap, _Snap]] = {}
+        for st in states:  # phase a: T_open
+            st.cap_used = ZERO
+            before = self._snap(st)
+            self._fill_pending_at_open(st)
+            snaps[st.series.inst_id] = (before, self._snap(st))
+        for st in states:  # phase b: inside the bar
+            self._intrabar(st)
+        for st in states:  # phase c/d: settlements, then end-of-series
+            before, after_open = snaps[st.series.inst_id]
+            self._funding(st, before, after_open, self._snap(st))
+            if t_close == last_bar_close[st.series.inst_id]:
+                self._final_exit(st)
+
+    def _final_exit(self, st: _Inst) -> None:
         s, i = st.series, st.idx
-        t_open = s.ts_open_ms[i]
-        st.cap_used = ZERO
-        before = self._snap(st)
-        self._fill_pending_at_open(st)
-        after_open = self._snap(st)
-        self._intrabar(st)
-        at_close = self._snap(st)
-        self._funding(st, before, after_open, at_close)
-        if final:
-            reason = "window_end" if s.ts_open_ms[i] + s.timeframe_ms >= self._end else "series_end"
-            st.pending.clear()
-            if st.position is not None:
-                self._market_exit(
-                    st, st.position.qty, s.close[i], t_open + s.timeframe_ms, reason, cap=False
-                )
+        t_close = s.ts_open_ms[i] + s.timeframe_ms
+        st.pending.clear()
+        if st.position is not None:
+            reason = "window_end" if t_close >= self._end else "series_end"
+            self._market_exit(st, st.position.qty, s.close[i], t_close, reason, cap=False)
 
     def _prev_volume(self, st: _Inst) -> Decimal:
         return st.series.volume_base[st.idx - 1] if st.idx > 0 else ZERO
@@ -554,8 +581,9 @@ class BacktestEngine:
 
     def _market_entry(self, st: _Inst, order: _Pending, ts: int) -> Decimal:
         p = st.position
-        if p is not None and p.side is not order.side:
-            self._reject(ts, st.series.inst_id, "entry_against_open_position")
+        if p is not None and (order.acc is None or p.acc is not order.acc):
+            # Only the order that opened this position may add to it (its TTL remainder).
+            self._reject(ts, st.series.inst_id, "entry_blocked_by_open_position")
             return ZERO
         qty = round_down_to_lot(min(order.qty, self._cap(st)), st.spec.lot_size_base)
         if qty <= 0:
@@ -578,6 +606,7 @@ class BacktestEngine:
                 order.side, ZERO, ZERO, ZERO, order.stop, order.take_profit, st.spec.mmr, acc
             )
             st.position = p
+            order.acc = acc
         p.avg_entry = (p.avg_entry * p.qty + price * qty) / (p.qty + qty)
         p.qty += qty
         p.margin += margin
@@ -603,6 +632,9 @@ class BacktestEngine:
         return qty
 
     def _equity_at_open(self) -> Decimal:
+        """Equity at T_open. Valid only during the open-fill phase: publication of the bars
+        closing at T happens after every instrument's execution, so every mark here is a
+        close at or before T_open, and no intrabar event at T has touched cash yet."""
         return self._equity()
 
     def _reduce(

@@ -6,14 +6,24 @@ one-tick floor (0.1) so the arithmetic stays checkable.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from decimal import Decimal as D  # noqa: N817 - fixture brevity
 
 import pytest
 
 from okxq.backtest.engine import BacktestResult, StrategyContext
-from okxq.backtest.types import G9_STRESS, Action, BacktestConfigError, OrderIntent, Provenance
+from okxq.backtest.sizing import SizeDecision
+from okxq.backtest.types import (
+    G9_STRESS,
+    Action,
+    BacktestConfigError,
+    InstrumentSpec,
+    OrderIntent,
+    Provenance,
+)
 
 from .conftest import (
+    FEES,
     INST,
     SPEC,
     FixedSizer,
@@ -379,3 +389,100 @@ def test_position_is_forced_flat_when_the_series_ends() -> None:
     (t,) = r.trades
     assert t.exit_reason == "series_end"
     assert t.exit_ts_ms == ts(4)
+
+
+# --- checkpoint-3 regressions ------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class PerInstSizer:
+    qty: dict[str, D]
+    sizer_id: str = "test-per-inst"
+
+    def size(self, *, spec: InstrumentSpec, **_: object) -> SizeDecision:
+        return SizeDecision(self.qty[spec.inst_id], D(1))
+
+
+@pytest.mark.parametrize("rally_name", ["A-USDT-SWAP", "Z-USDT-SWAP"])
+def test_margin_check_at_t_open_cannot_see_another_instruments_bar(rally_name: str) -> None:
+    """Advisor counter-example (finding 1). The rallying instrument's +50% bar must not fund
+    the other instrument's entry at that bar's OPEN - whatever the instruments are called."""
+    other = "M-USDT-SWAP"
+    rally = series([FLAT, FLAT, FLAT, ("100", "151", "99", "150", "1000"), FLAT], inst=rally_name)
+    quiet = series([FLAT] * 5, inst=other)
+    sizer = PerInstSizer({rally_name: D(50), other: D(60)})  # leverage 1: margin = notional
+    r = engine({rally_name: rally, other: quiet}, start=ts(1), end=ts(5), sizer=sizer).run(
+        Scripted(
+            {
+                ts(2): [OrderIntent(rally_name, Action.ENTER_LONG, D(50))],
+                ts(3): [OrderIntent(other, Action.ENTER_LONG, D(50))],
+            }
+        )
+    )
+    # At ts(3) open: equity 10000 - fees, rally margin ~5005 -> 60 x 100.1 does not fit.
+    assert "insufficient_margin" in [x.reason for x in r.rejections if x.inst_id == other]
+    assert not [f for f in r.fills if f.inst_id == other]
+
+
+def test_mixed_timeframes_are_refused() -> None:
+    from dataclasses import replace as dc_replace
+
+    a = series([FLAT] * 4, inst="A-USDT-SWAP")
+    b = dc_replace(
+        series([FLAT] * 4, inst="B-USDT-SWAP"),
+        timeframe_ms=2 * 3_600_000,
+        ts_open_ms=tuple(ts(2 * i) for i in range(4)),
+    )
+    with pytest.raises(BacktestConfigError, match="one timeframe"):
+        engine({"A-USDT-SWAP": a, "B-USDT-SWAP": b}, start=ts(1), end=ts(4))
+
+
+def test_no_reentry_in_the_same_decision_as_an_exit() -> None:
+    r = engine(ORACLE_BARS, start=ts(1), end=ts(5)).run(
+        Scripted({ts(2): [enter("90")], ts(3): [EXIT, enter("95")]})
+    )
+    assert "already_positioned" in [x.reason for x in r.rejections]
+    assert len(r.trades) == 1
+
+
+def test_slippage_is_volatility_and_size_scaled_by_hand() -> None:
+    """Nonzero coefficients (finding 7). Entry at bar 3's open = 100, lookback 2.
+    Closes before it: 100, 110, 100 -> log returns +/-ln(1.1), mean 0,
+    sample sd = sqrt(2 ln(1.1)^2 / 1) = ln(1.1) * sqrt(2).
+    participation = 1 / previous bar's volume 100 = 0.01 -> sqrt = 0.1.
+    raw = 100 * (0.1 * sd + 0.05 * 0.1); rounded UP to the 0.1 tick."""
+    import math
+
+    from okxq.backtest.engine import BacktestEngine, EngineConfig
+    from okxq.backtest.types import SlippageModel
+
+    bars = series(
+        [
+            ("100", "101", "99", "100", "100"),
+            ("100", "111", "99", "110", "100"),
+            ("110", "111", "99", "100", "100"),
+            ("100", "101", "99", "100", "100"),
+            FLAT,
+        ]
+    )
+    raw = 100 * (0.1 * math.log(1.1) * math.sqrt(2) + 0.05 * 0.1)
+    expected_slip = D(math.ceil(raw / 0.1)) * D("0.1")
+    assert expected_slip == D("1.9")  # 1.8479 -> 19 ticks
+    eng = BacktestEngine(
+        series={INST: bars},
+        specs={INST: SPEC},
+        funding={INST: flat_funding(8)},
+        config=EngineConfig(
+            fees=FEES,
+            slippage=SlippageModel(D("0.1"), D("0.05"), 2, "t"),
+            initial_equity=D(10_000),
+            participation_cap=D(1),
+            synthetic=True,
+        ),
+        sizer=FixedSizer(),
+        trade_start_ms=ts(2),
+        end_ms=ts(5),
+    )
+    r = eng.run(Scripted({ts(3): [enter("90")]}))
+    assert r.fills[0].price == D(100) + expected_slip
+    assert r.fills[0].slippage_cost == expected_slip

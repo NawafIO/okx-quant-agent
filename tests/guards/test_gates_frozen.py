@@ -12,12 +12,12 @@ from decimal import Decimal
 
 import pytest
 
-from okxq.backtest.gates import FROZEN, FrozenGates
+from okxq.backtest.gates import FROZEN, PINNED_GATES_SHA256, FrozenGates, GateTamperError
 
 pytestmark = pytest.mark.guard
 
 #: SHA-256 of FrozenGates().canonical_json(), frozen at M2 (2026-10-03).
-PINNED_SHA256 = "73cc903097ea6a44702be87481d96002c1dc36369a30e2b3d5d2088e34774ab2"
+PINNED_SHA256 = "48908f93c671a07134f1852e09f3773f99a7f2e8f3b58d07932d7c69591cbd0f"
 
 
 def test_gate_definitions_match_the_frozen_pin() -> None:
@@ -40,23 +40,43 @@ def test_gates_cannot_be_mutated_at_runtime() -> None:
         FROZEN.g1_max_drawdown = Decimal("0.5")  # type: ignore[misc]
 
 
-def test_the_evaluator_defaults_to_the_frozen_instance() -> None:
+def test_a_lenient_copy_of_the_gates_refuses_to_exist() -> None:
+    """Checkpoint-3 finding 2: constructing different thresholds must fail, not just
+    mutating the frozen instance."""
+    with pytest.raises(GateTamperError):
+        FrozenGates(g2_min_profit_factor=Decimal("1.0"))
+    with pytest.raises(GateTamperError):
+        FrozenGates(holdout_start_utc="2099-01-01T00:00:00+00:00")
+    assert FrozenGates() == FROZEN
+
+
+def test_the_in_code_pin_matches_this_pin() -> None:
+    assert PINNED_GATES_SHA256 == PINNED_SHA256
+
+
+@pytest.mark.parametrize("module", ["gates", "holdout", "walkforward"])
+def test_no_public_function_accepts_replacement_thresholds(module: str) -> None:
+    """Nothing a researcher calls may take the gates (or the holdout boundary) as an
+    argument - the frozen instance is bound inside, never passed in."""
+    import importlib
     import inspect
 
-    from okxq.backtest import gates
-
-    for fn in (
-        gates.g1,
-        gates.g2,
-        gates.g3,
-        gates.g4,
-        gates.g5,
-        gates.g6,
-        gates.g7,
-        gates.g8,
-        gates.evaluate,
-        gates.evaluate_holdout,
-    ):
-        default = inspect.signature(fn).parameters["g"].default
-        assert default is FROZEN
-        assert isinstance(default, FrozenGates)
+    mod = importlib.import_module(f"okxq.backtest.{module}")
+    for name, obj in vars(mod).items():
+        if name.startswith("_") or getattr(obj, "__module__", None) != mod.__name__:
+            continue
+        callables = [obj]
+        if inspect.isclass(obj):
+            callables = [getattr(obj, "__init__")] + [  # noqa: B009
+                f for n, f in vars(obj).items() if callable(f) and not n.startswith("__")
+            ]
+        for fn in callables:
+            if not callable(fn) or (inspect.isclass(fn) and fn is not obj):
+                continue
+            try:
+                params = inspect.signature(fn).parameters
+            except (TypeError, ValueError):
+                continue
+            for p in params.values():
+                assert "FrozenGates" not in str(p.annotation), f"{module}.{name}: {p.name}"
+                assert p.name not in {"g", "gates", "thresholds"}, f"{module}.{name}: {p.name}"

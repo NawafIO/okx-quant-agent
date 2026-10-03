@@ -130,19 +130,25 @@ def cmd_funding_validate(args: argparse.Namespace) -> int:
     if report.verdict is fm.FundingVerdict.ESCALATE:
         print("  -> tolerance not met: ESCALATE to the Chief Advisor. Do not tune to pass.")
         return 3
+    if report.verdict is fm.FundingVerdict.PARTIAL:
+        print(f"  PARTIAL: only {sorted(report.validated)} may receive a modelled series")
+        return 0
     return 0 if report.verdict is fm.FundingVerdict.PASS else 4
 
 
 def cmd_funding_model(args: argparse.Namespace) -> int:
     store, _, chain = _store(args.env)
     report = fm.validate(_calibration_inputs(store, chain))
-    if report.verdict is not fm.FundingVerdict.PASS or report.model is None:
+    if not report.validated or report.model is None:
         print(f"refusing to write modelled funding: validation verdict is {report.verdict}")
         return 3 if report.verdict is fm.FundingVerdict.ESCALATE else 4
     written = 0
     for inst, (mark, index, realised) in _calibration_inputs(
         store, chain, full_history=True
     ).items():
+        if inst not in report.validated:
+            print(f"  {inst}: NOT validated - no modelled series written")
+            continue
         interval = fm.measured_interval_ms(realised)
         prem = fm.hourly_premium(mark, index)
         times = fm.schedule(

@@ -6,7 +6,7 @@ need real market data, and this cloud environment can't reach OKX (`www.okx.com`
 network policy). See [Sign-off checklist](#sign-off-checklist).
 
 Code: `src/okxq/backtest/`. Tests: `tests/unit/backtest/`, plus two new guard modules in
-`tests/guards/`.
+`tests/guards/`. Guard tests: **57** (the original 35 are unchanged, 22 added, none removed or weakened).
 
 ---
 
@@ -27,7 +27,9 @@ Code: `src/okxq/backtest/`. Tests: `tests/unit/backtest/`, plus two new guard mo
 | `reference_strategies.py` | `RandomEntry`, the cost-model sanity check |
 | `cli.py` | `funding-validate`, `funding-model`, `sanity-random` |
 
-Frozen gate definitions: `FrozenGates().sha256() = 73cc903097ea6a44702be87481d96002c1dc36369a30e2b3d5d2088e34774ab2`.
+Frozen gate definitions: `FrozenGates().sha256() = 48908f93c671a07134f1852e09f3773f99a7f2e8f3b58d07932d7c69591cbd0f`
+(pinned in `gates.py` and again in `tests/guards/test_gates_frozen.py`; a `FrozenGates` with any other
+definitions raises `GateTamperError` on construction).
 
 ---
 
@@ -72,6 +74,35 @@ to run on a persistent host; see `scripts/archive_funding.sh`.
 
 ---
 
+## 2b. Chief Advisor checkpoint 3 (audit of the built code), 2026-10-03
+
+Verdict: **FIX BEFORE REPORTING.** The advisor confirmed three findings by running counter-examples. All ten are fixed, each
+with a regression test.
+
+| # | Defect | Fix |
+|---|---|---|
+| 1 | **Engine look-ahead across instruments.** An entry on B at T_open was margin-checked against A's close and intrabar exits at T, so results depended on inst_id order | All open fills at T run before any intrabar event, and publication follows all execution. One timeframe per run (mixed timeframes refused). Regression: the advisor's counter-example under both orderings fails on the old engine and passes now |
+| 2 | Gates and the holdout boundary were replaceable parameters; the unseal and trial-log paths were caller-chosen | Every `gates` parameter removed. `FrozenGates` refuses non-pinned construction. Unseal goes on the environment's audit chain; the trial log path comes from the profile |
+| 3 | G-6 perturbed the full-span fit over a span it was fit on (in-sample) | G-6 perturbs each fold's **selected** params on that fold's **OOS** window, pooled |
+| 4 | Modelled funding was written for instruments validation never scored | New `PARTIAL` verdict; the model is written only for instruments scored and passed |
+| 5 | The isolation guard was vacuous and had holes | Scans `reference_strategies.py` too (never empty); catches `from okxq.backtest import holdout`, `importlib`, `__import__`, `FrozenGates` |
+| 6 | A number hidden in a string or tuple dodged G-6 | Such parameters make G-6 INVALID |
+| 7 | Slippage arithmetic had no asserting test | Hand-computed fixture with nonzero coefficients (1.8479 rounds up to 19 ticks) |
+| 8 | Trials can go unrecorded when the engine is called directly | **Not fixable in Python**: `BacktestEngine.run` is public. Recorded as open issue 8 below |
+| 9 | Re-entry onto a partially exited position kept the old stop | No entry while a position exists, except continuation of the same order |
+| 10 | Holdout evaluation omitted G-7 and cost stress | Holdout must pass G-1, G-3, G-4, G-7 and G-9 (pin changed accordingly) |
+
+**Disputed point ruled:** the advisor **accepted** the stop-vs-liquidation rule (the level nearer the
+open triggers first). The residual risk is a flash move through both levels within one bar. That is
+what the slippage volatility term and the M7 PAPER reconciliation are for.
+
+Process note: the first two attempts at a multi-instrument future-corruption test **did not** catch
+defect 1 on the old engine. Corrupting the other instrument fired its own stops, which freed margin and
+masked the leak. That test is kept as a general invariant, with that limitation stated in its docstring.
+The targeted counter-example is the regression for defect 1.
+
+---
+
 ## 3. Assumptions recorded in every result
 
 `BacktestResult.assumptions` carries all of these, so they travel with every number:
@@ -108,6 +139,12 @@ to run on a persistent host; see `scripts/archive_funding.sh`.
 6. **Gap-repair tool** (carried forward from M1) is not built. Gaps stay quarantined and the engine
    cancels entries across them.
 7. **Sizer is provisional.** The real sizer is M5.
+8. **The trial count is honest only through `ResearchProtocol`.** `BacktestEngine.run` is public, so a
+   run made outside the protocol is never counted, and G-8's N is understated in the lenient direction.
+   M4 research must run only through `ResearchProtocol`. M4's review must check that the trial log
+   count matches the research log.
+9. **Simultaneous entries at one T_open** compete for margin in inst_id order. That is capacity
+   allocation at one instant, deterministic, and not look-ahead, but it is an ordering choice.
 
 ---
 
@@ -115,17 +152,17 @@ to run on a persistent host; see `scripts/archive_funding.sh`.
 
 | M2 acceptance criterion | Status |
 |---|---|
-| Look-ahead test: a peeking strategy is unable to | **PASS** (`test_a_strategy_that_peeks_at_the_next_bar_is_unable_to`) |
-| Corrupting all future data leaves results bit-identical | **PASS** (digest equality, plus a stronger prefix test) |
+| Look-ahead test: a peeking strategy is unable to | **PASS** for the strategy view. The engine's own cross-instrument leak (checkpoint-3 #1) is fixed with a targeted regression |
+| Corrupting all future data leaves results bit-identical | **PASS** (digest equality, a prefix test, and a two-instrument prefix test; see the process note in §2b about what the latter can and cannot catch) |
 | Oracle strategy P&L to the cent incl. fees and funding | **PASS** (19.667 baseline, 19.334 under G-9 stress, hand-computed) |
 | Metrics engine vs hand-computed fixtures | **PASS** |
 | Gate evaluator vs synthetic curves with known MaxDD/PF | **PASS** (exact boundaries at 15% and 1.5) |
-| Holdout test: research code reading the holdout raises | **PASS** |
+| Holdout test: research code reading the holdout raises | **PASS**. The boundary is not a parameter, and a lenient `FrozenGates` cannot be constructed. Direct Parquet access is a guard-scanned tripwire, not a sandbox |
 | Golden-fixture regression test | **PASS** (digest pinned) |
 | **Random entry on REAL data has negative expectancy after costs** | **BLOCKED**: needs data, measured specs, fee rates |
 | **D1 funding model validated on the realised overlap** | **BLOCKED**: needs data |
 | **P-11 weekly archive verified to have run** | **BLOCKED**: needs a persistent host |
-| Chief Advisor M2 audit (checkpoint 3) | pending until the above |
+| Chief Advisor checkpoint 3 on the built code | **Done**: 10 defects, all addressed (§2b). A final M2 audit is still due after the blocked items run on real data |
 
 ### Once data is reachable, in order
 
