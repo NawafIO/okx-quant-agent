@@ -1,0 +1,20 @@
+{
+  "written": "2026-10-03, BEFORE any correlation in the research window was computed; only instrument first-bar dates were looked at",
+  "data": "daily log returns (close-to-close, last price) via the research door, 2023-01-01 .. 2025-09-30 (holdout sealed); pairwise-complete timestamps, nothing filled; min_overlap 60",
+  "universe_rule": "every stored instrument whose first daily bar is before the holdout start; CL, MU, SNDK, NIGHT, ZEC are excluded by that rule (they list inside the holdout)",
+  "survivorship": "SURVIVORS ONLY: the universe is today's turnover top-N plus archived names; instruments delisted before 2026 (e.g. LUNA, FTT) are absent, so measured co-movement is that of survivors and likely understates crash co-movement",
+  "full_history_set": ["BTC-USDT-SWAP", "ETH-USDT-SWAP", "DOGE-USDT-SWAP", "NEAR-USDT-SWAP", "SAND-USDT-SWAP", "SOL-USDT-SWAP", "UNI-USDT-SWAP", "XRP-USDT-SWAP"],
+  "expectations": {
+    "E1": "median over crypto alts (all instruments except BTC and XAU) of full-window rho(alt, BTC) >= 0.60",
+    "E2": "at cut distance 0.5 (average-linkage, distance 1 - rho) all eight full_history_set instruments sit in ONE cluster",
+    "E3": "XAU is outside the crypto cluster at cut 0.5 and rho(XAU, BTC) < 0.30",
+    "E4": "STRESS: in BTC's worst calendar month of the window (lowest close-to-close month return, chosen mechanically), the mean pairwise rho of the full_history_set is >= its full-window mean pairwise rho (diversification shrinks when it is needed)"
+  },
+  "report_only": [
+    "rolling 90-day rho(alt, BTC) per alt: min, max, and the dates of the min",
+    "per-pair overlap counts (short-history names HYPE, TRUMP, PUMP, XAU, PEPE, SUI, WLD)",
+    "average-linkage merge order",
+    "cluster structure at cut 0.5 within the worst month"
+  ],
+  "consequence": "each expectation is PASS/FAIL as written; a FAIL is reported and kept, not re-specified. This is a demonstration for the RC-07 cluster-exposure design (M5), not a gate"
+}
