@@ -313,3 +313,96 @@ def test_daily_aggregation_excludes_the_current_day_until_its_2300_bar_has_close
         assert hi[-1] == max(view.bar(i)[2] for i in day_bars)
         assert lo[-1] == min(view.bar(i)[3] for i in day_bars)
         assert len(cl) == 20  # 20 whole days in the bounded window, none partial
+
+
+# --- M4 closing audit: buffer convergence and live parameters -----------------------------
+#
+# Known defects are STRICT xfails: visible in every run, and a fix that is not also recorded
+# (the marker removed, M4_RESEARCH_LOG updated) fails the suite.
+
+
+def full_decisions(
+    spec: StrategySpec,
+    params: dict[str, Any],
+    buf: HistoryBuffer,
+    start: int,
+    stop: int,
+    warm: int | None = None,
+) -> list[Any]:
+    """Entries (with stop and target prices) and exits (with varying bars held) over
+    [start, stop), from a bounded view of ``warm`` bars (default: the params' warm-up)."""
+    s = spec.construct(params, "t")
+    w = warm or s.warmup_bars
+    pos = PositionSnapshot(Side.LONG, Decimal(1), Decimal(100), Decimal(90), None)
+    out: list[Any] = []
+    for n in range(start, stop):
+        view = BoundedView(HistoryView(buf, n), w)
+        flat = MarketContext("PAPER", T0 + n * HOUR_MS, buf.inst_id, HOUR_MS, view, None, None)
+        held = MarketContext("PAPER", T0 + n * HOUR_MS, buf.inst_id, HOUR_MS, view, pos, n % 80)
+        out.append((s.generate(flat), s.exit(held)))
+    return out
+
+
+@pytest.mark.parametrize(
+    "spec",
+    [
+        pytest.param(
+            trend_breakout.SPEC,
+            marks=pytest.mark.xfail(
+                strict=True,
+                reason="KNOWN DEFECT (M4 closing audit): the 20-day Wilder ATR has not "
+                "converged in 150 days of daily bars, so stops differ with buffer length",
+            ),
+        ),
+        keltner_reversion.SPEC,
+        vol_compression_breakout.SPEC,
+    ],
+    ids=lambda s: s.strategy_id,
+)
+def test_decisions_at_warmup_equal_decisions_at_twice_warmup(spec: StrategySpec) -> None:
+    """M4_DESIGN §2: a bounded buffer must decide as full history would."""
+    warm = int(spec.defaults["warmup_bars"])
+    buf = synthetic(11, 2 * warm + 1500)
+    p = dict(spec.defaults)
+    a = full_decisions(spec, p, buf, 2 * warm, 2 * warm + 1500, warm=warm)
+    b = full_decisions(spec, p, buf, 2 * warm, 2 * warm + 1500, warm=2 * warm)
+    assert any(d != (None, False) for d in a), "vacuous span"
+    assert a == b
+
+
+DEAD = {("vol_compression_breakout", "bb_k")}
+LIVE_CASES = [
+    pytest.param(
+        spec,
+        name,
+        marks=[
+            pytest.mark.xfail(
+                strict=True,
+                reason="KNOWN DEFECT (M4 closing audit): bandwidth percentile rank is invariant "
+                "to the band multiple; removing it is a new version (second grid, needs sign-off)",
+            )
+        ]
+        if (spec.strategy_id, name) in DEAD
+        else [],
+        id=f"{spec.strategy_id}.{name}",
+    )
+    for spec in SPECS
+    for name in spec.defaults
+    if name != "warmup_bars"  # covered by the convergence test above
+]
+
+
+@pytest.mark.parametrize(("spec", "name"), LIVE_CASES)
+def test_every_declared_parameter_changes_a_decision_under_the_g6_step(
+    spec: StrategySpec, name: str
+) -> None:
+    buf = synthetic(7, 9000)
+    base = dict(spec.defaults)
+    start = int(base["warmup_bars"] * 1.25) + 1
+    ref = full_decisions(spec, base, buf, start, len(buf))
+    for factor in (0.8, 1.2):
+        v = base[name] * factor
+        moved = base | {name: round(v) if isinstance(base[name], int) else v}
+        if full_decisions(spec, moved, buf, start, len(buf)) != ref:
+            return
+    pytest.fail(f"{spec.strategy_id}.{name} changes no decision at +/-20%: a dead parameter")

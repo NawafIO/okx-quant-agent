@@ -9,8 +9,8 @@
 | **U-3** | Written acceptance of **V-14** (survivorship cannot be repaired on OKX), recorded on the audit chain | promotion |
 
 **Status as of 2026-10-03** (owner evidence on the PAPER audit chain):
-- **U-1: received, MEASURED provenance pending.** Maker 0.02%, taker 0.05%, read 2026-10-03; record a5a9e9d2a94e. The source (account fee page or API) was not stated and has been asked for. These equal OKX's regular-user perpetual schedule and the existing `FEES_LOW_SENSITIVITY` set. Adopting them in research is a Phase-2 cost-model change (§5): applied to every candidate, as new trials.
-- **U-2: accepted.** Task result 0; last run 2026-10-03 18:09; next run 2026-10-04 03:00 (Sunday); 0 missed runs. Record a93fc9ceea8a.
+- **U-1: MEASURED.** Perpetual maker 0.02%, taker 0.05%, read from the owner's OKX account fee & tier page (Regular user) on 2026-10-03; record 1867e2a2c00c, superseding a5a9e9d2a94e, which had no source. Now `costs.FEES_MEASURED_PERP`. Adopting them in research is a Phase-2 cost-model change (§5): applied to every candidate, as new trials.
+- **U-2: accepted on substitute evidence.** `Get-ScheduledTaskInfo` showed result 0; last run 2026-10-03 18:09; next run 2026-10-04 03:00 (Sunday); 0 missed runs. The script's `-Status` output was not supplied. Record a93fc9ceea8a.
 - **U-3: accepted** in the owner's words. Record 27d3491f0e89.
 
 **The expected outcome of M4 is that most or all candidates FAIL.** That is the gates working.
@@ -89,3 +89,25 @@ and the outcome that would falsify it.
   - The research start was corrected at N=0.
   - `target_atr = 10` is a declared parameter.
 - **Contract-design point for the user:** `contracts.Signal` requires at least one take-profit (§4). That forces a nominal target onto strategies that have none, such as trend following. M4 does not patch the contract; it declares the target as a perturbed parameter instead.
+
+## 6. M4 closing audit: CLOSED as "cycle 1: no candidate passed"
+
+The original advisor was unavailable (API credit error), so the audit was done by a replacement Chief Advisor working from the committed records.
+
+- **Rulings:**
+  - M4 acceptance is met; the **Phase-2 exit is NOT met**, so M6 stays blocked.
+  - **M5 proceeds now.** It is offline and strategy-independent. It must not change the frozen research sizing.
+  - Phase-2 hypotheses may run alongside M5, under the two-grid cap.
+  - With N at 1302, G-8 gets harder for every future candidate. **That is never a reason to revisit G-8.**
+- **Verified:**
+  - No protocol violation.
+  - Rationales and code (ebc236c) precede the first trial.
+  - No strategy or analysis file changed after the first trial.
+  - The gates pin is unchanged since M2.
+  - The crash run logged nothing.
+  - N = 1302 on a single version and sizing.
+  - The holdout was not read.
+- **Corrections applied:** see `docs/M4_RESEARCH_LOG.md`.
+- **Before any second grid:**
+  - The live-parameter and buffer-convergence tests must pass without xfail for that candidate.
+  - Removing `bb_k`, or fixing trend_breakout's ATR convergence, is a new version, and its runs are new trials.

@@ -120,6 +120,16 @@ def print_attribution(results: Sequence[BacktestResult]) -> None:
     core = [t for t in trades if t.inst_id in ("BTC-USDT-SWAP", "ETH-USDT-SWAP")]
     core_net = sum((t.net_pnl for t in core), Decimal(0))
     print(f"  {'BTC+ETH only':<22}{len(core):>6}{'':>41}{core_net:>11.0f}  {_pf(core)}")
+    refused: dict[str, int] = defaultdict(int)
+    for r in results:
+        for rj in r.rejections:
+            refused[rj.reason] += 1
+    fills = sum(len(r.fills) for r in results)
+    print(
+        f"  fills {fills}; closed trades {len(trades)}; refused entries "
+        f"{sum(refused.values())}: "
+        + (", ".join(f"{k} {v}" for k, v in sorted(refused.items())) or "none")
+    )
     bound: dict[str, Decimal] = defaultdict(Decimal)
     total = Decimal(0)
     for r in results:

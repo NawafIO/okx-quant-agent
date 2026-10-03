@@ -41,6 +41,14 @@ RESEARCH_SLIPPAGE = SlippageModel(
 FEES_USER_SPOT_SCHEDULE = FeeSchedule(
     maker=Decimal("0.0008"), taker=Decimal("0.001"), provenance=Provenance.UNMEASURED_ASSUMPTION
 )
+#: MEASURED perpetual-swap fees: read by the owner from the OKX account fee & tier page
+#: (Regular user) on 2026-10-03; PAPER audit record 1867e2a2c00c. The same page lists
+#: spot 0.08% / 0.10%, confirming FEES_USER_SPOT_SCHEDULE is the SPOT schedule. M4 cycle 1
+#: ran on FEES_USER_SPOT_SCHEDULE; adopting this set in research is a Phase-2 cost-model
+#: change (all candidates, new trials, new cost sha), not a retroactive correction.
+FEES_MEASURED_PERP = FeeSchedule(
+    maker=Decimal("0.0002"), taker=Decimal("0.0005"), provenance=Provenance.MEASURED
+)
 #: Low sensitivity: a check that only passes at inflated fees is a vacuous pass.
 FEES_LOW_SENSITIVITY = FeeSchedule(
     maker=Decimal("0.0002"), taker=Decimal("0.0005"), provenance=Provenance.UNMEASURED_ASSUMPTION
