@@ -8,6 +8,11 @@
 | **U-2** | P-11 evidence: `.\scripts\archive_funding.ps1 -Status` showing `result: 0 = success` and a fresh last-success time | promotion |
 | **U-3** | Written acceptance of **V-14** (survivorship cannot be repaired on OKX), recorded on the audit chain | promotion |
 
+**Status as of 2026-10-03** (owner evidence on the PAPER audit chain):
+- **U-1: received, MEASURED provenance pending.** Maker 0.02%, taker 0.05%, read 2026-10-03; record a5a9e9d2a94e. The source (account fee page or API) was not stated and has been asked for. These equal OKX's regular-user perpetual schedule and the existing `FEES_LOW_SENSITIVITY` set. Adopting them in research is a Phase-2 cost-model change (§5): applied to every candidate, as new trials.
+- **U-2: accepted.** Task result 0; last run 2026-10-03 18:09; next run 2026-10-04 03:00 (Sunday); 0 missed runs. Record a93fc9ceea8a.
+- **U-3: accepted** in the owner's words. Record 27d3491f0e89.
+
 **The expected outcome of M4 is that most or all candidates FAIL.** That is the gates working.
 
 ## 1. Survivorship caveat (verbatim on every GateReport entry in the research log)
