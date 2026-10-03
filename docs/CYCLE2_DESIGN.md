@@ -46,7 +46,7 @@ Advisor review of 7ae7250: **PROCEED WITH CHANGES** (§8). The four blocking fin
 
 | check | in research | how |
 |---|---|---|
-| SZ-1..4 | yes | M5 sizer |
+| SZ-1..4 | yes | M5 sizer. SZ-2's Wilder ATR(14) is computed by the gate, so the strategy convergence test does not cover it. The gate needs its own fixed-buffer definition and an exactness test |
 | RC-01 kill switch | yes, as the halt latch | see halts |
 | RC-02 env / PHASE | N/A | no environment in a backtest |
 | RC-03 freshness | already enforced | `no_bar_closed_at_decision_time` |
@@ -54,7 +54,7 @@ Advisor review of 7ae7250: **PROCEED WITH CHANGES** (§8). The four blocking fin
 | RC-05..RC-08 | yes | M5 functions; cluster CRYPTO, so **at most 3 full-size positions** |
 | RC-09 | already enforced | `already_positioned`, `entry_already_pending` |
 | RC-10, RC-11 | yes | halts below |
-| RC-12a..f | yes | M5 functions (3×, margin, liquidation ≥ 1.5× stop distance). RC-12e's max size is `maxMktSz × ctVal` from `docs/instrument_specs.raw.json` (MEASURED 2026-10-03), applied to every year. [Guessing] Historical limits may have differed. In base units: BTC 350, ETH 9,000, SOL 39,000, NEAR 78,000, UNI 32,000, SAND 430,000, XRP 1.6M, DOGE 24M. It can bind at 300k notional only where the price is low, e.g. NEAR near $2.5; RC-12e refusals are reported |
+| RC-12a..f | yes | M5 functions (3×, margin, liquidation ≥ 1.5× stop distance). RC-12e's max size is `maxMktSz × ctVal` from `docs/instrument_specs.raw.json` (MEASURED 2026-10-03), applied to every year. [Guessing] Historical limits, and `ctVal` itself, may have differed. In base units: BTC 350, ETH 9,000, SOL 39,000, NEAR 78,000, UNI 32,000, SAND 430,000, XRP 1.6M, DOGE 24M. It can bind at 300k notional only where the price is low, e.g. NEAR near $2.5; RC-12e refusals are reported |
 | RC-13 3-loss cooldown 24 h | yes | from closed-trade outcomes |
 | RC-14 ≤ 3 entries per hour | yes | at most 3 entries per decision bar |
 | RC-15 API breaker | N/A | no venue |
