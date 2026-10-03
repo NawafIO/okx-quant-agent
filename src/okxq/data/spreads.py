@@ -15,8 +15,9 @@ Each poll appends one JSON line per instrument to ``data/<env>/spreads/YYYY-MM-D
 and the venue's book timestamp): the top ``DEPTH`` levels as the venue's exact strings, so
 depth can later inform the impact term too. A book that fails validation or a failed request
 is written as a GAP line with the reason - never dropped, never repaired - so missing samples
-stay visible. A run that collected nothing, or more gaps than samples, exits 1 and writes no
-success stamp; ``state/<env>/collect_spreads.last_ok`` is written only on success.
+stay visible. A run in which ANY instrument collected nothing, or more gaps than samples,
+exits 1 and writes no success stamp; ``state/<env>/collect_spreads.last_ok`` is written only
+on success.
 """
 
 from __future__ import annotations
@@ -28,7 +29,7 @@ import os
 import sys
 import time
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
@@ -107,9 +108,11 @@ def parse_books(inst_id: str, response: Any, req_ms: int, recv_ms: int) -> BookS
     except (KeyError, TypeError, ValueError) as e:
         raise BookError("missing or non-integer ts") from e
     seq = book.get("seqId")
-    return BookSnapshot(
-        inst_id, req_ms, recv_ms, venue_ms, int(seq) if seq is not None else None, bids, asks
-    )
+    try:
+        seq_id = int(seq) if seq is not None else None
+    except (TypeError, ValueError) as e:
+        raise BookError(f"non-integer seqId {seq!r}") from e
+    return BookSnapshot(inst_id, req_ms, recv_ms, venue_ms, seq_id, bids, asks)
 
 
 def snapshot_record(s: BookSnapshot) -> dict[str, Any]:
@@ -153,10 +156,25 @@ class Counts:
     polls: int = 0
     samples: int = 0
     gaps: int = 0
+    per_inst: dict[str, list[int]] = field(default_factory=dict)  # inst -> [samples, gaps]
+
+    def add(self, inst: str, *, gap: bool) -> None:
+        row = self.per_inst.setdefault(inst, [0, 0])
+        row[gap] += 1
+        if gap:
+            self.gaps += 1
+        else:
+            self.samples += 1
+
+    @property
+    def failing(self) -> list[str]:
+        """Instruments with no samples or more gaps than samples. Judged per instrument, so
+        one instrument failing on every poll cannot hide behind seven healthy ones."""
+        return sorted(i for i, (ok, gap) in self.per_inst.items() if ok == 0 or gap > ok)
 
     @property
     def ok(self) -> bool:
-        return self.samples > 0 and self.gaps <= self.samples
+        return bool(self.per_inst) and not self.failing
 
 
 def collect(
@@ -190,10 +208,10 @@ def collect(
                 snap = parse_books(inst, response, req, clock_ms())
             except (BookError, VenueError, ccxt.BaseError) as e:
                 sink.write(gap_record(inst, req, f"{type(e).__name__}: {e}"[:300]))
-                counts.gaps += 1
+                counts.add(inst, gap=True)
             else:
                 sink.write(snapshot_record(snap))
-                counts.samples += 1
+                counts.add(inst, gap=False)
         k = max(k + 1, -(-(clock_ms() - start) // interval_ms))
     return counts
 
@@ -232,7 +250,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         f"gaps={counts.gaps} dir={sink.root}"
     )
     if not counts.ok:
-        print("FAIL: no samples, or more gaps than samples", file=sys.stderr)
+        print(f"FAIL: no samples, or more gaps than samples, for {counts.failing}", file=sys.stderr)
         return 1
     _write_stamp(profile.state_db.parent / "collect_spreads.last_ok")
     return 0

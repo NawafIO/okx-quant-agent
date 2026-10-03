@@ -313,8 +313,8 @@ Consequences (Chief Advisor ruling, M4 checkpoint 1):
 
 ## 11. V-15: the funding interval changes at runtime (observed 2026-10-03, cycle 2)
 
-**A capped funding rate shortens the instrument's settlement interval. Clock arithmetic on a
-fixed 8h grid is wrong live.**
+**[Likely, one event] A capped funding rate shortens the instrument's settlement interval.
+[Certain] Clock arithmetic on a fixed 8h grid is wrong live.**
 
 | Evidence (realised funding archive, calibration door) | |
 |---|---|
@@ -325,7 +325,8 @@ fixed 8h grid is wrong live.**
 Consequences:
 - Research funding (funding-bound-v1) is synthetic on a fixed 8h grid, so **no backtest can
   see an interval change**. More settlements per day at a capped rate is a cost a backtest
-  understates for exactly the instruments under funding stress.
+  understates for exactly the instruments under funding stress: SAND shorts at the floor pay 1%
+  per 4h live against 1% per 8h modelled.
 - A strategy "flat across settlements" must, live, read `nextFundingTime` per instrument and
   never derive it from the clock. 22:00-23:00 UTC is clear of both the 8h and the 4h grids.
 - [Guessing] Whether OKX also uses 1h or 2h intervals, and when an instrument reverts to 8h,

@@ -1,4 +1,4 @@
-# Cycle 2 design (DRAFT, for advisor review; no trial runs before sign-off)
+# Cycle 2 design (Revision 1, after the advisor's review; no trial runs yet)
 
 Owner decisions of 2026-10-03:
 - **D1:** adopt measured perpetual fees, and re-run the M4 baselines.
@@ -6,131 +6,152 @@ Owner decisions of 2026-10-03:
 - **D3:** enforce the M5 risk limits in research.
 - **Candidates:** intraday_momentum (22:00–23:00 UTC) now; a design review for btc_lead_lag.
 
-Status at drafting: trial log **N = 1,302**. Holdout sealed. PHASE 2. No cycle-2 trial has run.
+Status: trial log **N = 1,302**. Holdout sealed. PHASE 2. No cycle-2 trial has run.
 
-## 0. Where this draft departs from the owner's instructions, and why
+Advisor review of 7ae7250: **PROCEED WITH CHANGES** (§8). The four blocking findings are folded in below. btc_lead_lag at 1h: **STOP**, agreed.
 
-1. **The M4 baselines are not re-run under the new fees alone.** The M4 closing audit already ruled on this (M4_RESEARCH_LOG, "No re-run on measured fees now"). Re-pricing the stored trades with measured fees leaves all three candidates negative: trend_breakout about −6.3k, keltner about −75.7k, vol_compression about −57.6k. A re-run would add about 1,285 trials and could not change a verdict.
-   - D2 changes slippage as well, and an honest re-run has to wait for it. Otherwise the baselines get re-run twice, about 2,600 trials, roughly doubling N and deflating G-8 for every future candidate.
-   - §4 replaces the blanket re-run with a pre-registered re-pricing screen.
-2. **btc_lead_lag is not recommended on 1h bars** (see `docs/strategies/btc_lead_lag_REVIEW.md`). The literature found in this pass puts the BTC→alt lag at minutes, and only for small caps; it does not support a 1h lag. The review is prepared as asked, and its verdict is "do not build at 1h".
-3. **intraday_momentum faces a fee hurdle that I expect it to fail** (see its rationale, §Cost). The draft adds a signal-free feasibility check (§5) that can stop it before any trial is spent.
+## 0. The owner's decision still open: the D1 re-run
+
+**My recommendation: do not re-run the M4 baselines in cycle 2.** It is the owner's call (advisor B-4): the M4 closing-audit ruling was advice on trial budget, not a veto. The predictable outcome, stated plainly:
+- Cycle 2 changes fees, spreads and risk limits. It does **not** change funding-bound-v1, which is the dominant cost of the baselines. [Likely] No baseline can turn positive:
+  - trend_breakout: about +29.0k gross, −1.3k fees at measured rates, about 0 slippage, −32.2k funding ≈ **−4.5k**;
+  - keltner_reversion: **−36.7k** gross before slippage;
+  - vol_compression_breakout: about **−24k to −32k** even at zero slippage.
+- Options for the owner:
+  1. **Skip** (recommended): 0 trials.
+  2. **Re-pricing screen**: re-price the stored cycle-1 OOS trades under cycle-2 fees and spread. 0 trials. It is a screen, not evidence: it ignores sizing path and the D3 cluster cap, which would change which SAND shorts are taken.
+  3. **One full re-run** under the complete cycle-2 config, never under fees alone: about **1,350 trials**, for an outcome predicted above.
 
 ## 1. D1: fees
 
-- `costs.FEES_MEASURED_PERP` (maker 0.02%, taker 0.05%; MEASURED, audit record 1867e2a2c00c) becomes the fee schedule of the **cycle-2 cost config**. That config is a new `cost_config_sha`, and every cycle-2 trial records it.
-- The engine charges taker on market entries, stop exits and signal exits, and maker only on a resting take-profit (engine.py `_fee`). So the cost a strategy actually faces is about **0.10% per round trip plus slippage**, not 0.04%.
-- `FEES_USER_SPOT_SCHEDULE` stays in the code because cycle-1 records reference it. It is no longer used for new trials.
+- `costs.FEES_MEASURED_PERP` (maker 0.02%, taker 0.05%; MEASURED, audit record 1867e2a2c00c) is the fee schedule of the **cycle-2 cost config**, a new `cost_config_sha` recorded on every cycle-2 trial.
+- The engine charges taker on market entries, stop exits and signal exits, and maker only on a resting take-profit (engine.py `_fee`). The cost a strategy faces is therefore about **0.10% per round trip plus slippage**.
+- `FEES_USER_SPOT_SCHEDULE` stays because cycle-1 records reference it. It is not used for new trials.
 
-## 2. D3: the M5 risk limits inside the backtest
+## 2. D3: the M5 risk limits inside the backtest, with M5's exact semantics
 
 **Mechanism.**
-- An optional `RiskGate` is consulted in `BacktestEngine._accept` **after** sizing and before the entry is queued. It receives a read-only portfolio view:
-  - equity and the equity at 00:00 UTC;
-  - the high-water mark;
-  - open positions (instrument, side, qty, fill price, stop);
-  - pending entries;
-  - closed-trade outcomes;
-  - entry timestamps.
-- It returns pass, or a rejection reason (`risk:RC-07` and so on), recorded as an engine `Rejection` like every other refusal.
+- An optional `RiskGate` is consulted in `BacktestEngine._accept` before an entry is queued.
+- It builds the M5 input types (`OpenPosition` with the current **mark**, a portfolio snapshot) from engine state. It then calls **the same functions** in `okxq.risk.sizing` and `okxq.risk.checks`, with no re-implementation; an equivalence test runs the M5 fixtures through the gate's adapter.
+- A refusal is an engine `Rejection` (`risk:RC-07`, `risk:SZ-2`, and so on).
 - `risk_gate=None` is the default, so the golden digest and every cycle-1 result are unchanged; a test pins that.
-- Where the M5 input types allow, the gate calls the **same pure functions** in `okxq.risk.checks`. Where a check needs a live-only input, it is listed as N/A below; nothing is faked as "passed".
-- The pinned `RiskPolicy` sha (b4e030fc) becomes part of the research config and is recorded on every Trial and GateReport.
+- The pinned `RiskPolicy` sha (b4e030fc) is part of the research config and is recorded on every Trial and GateReport.
+
+**What M5 does, and therefore what research does.** The draft had departed from M5 in three places, now corrected (advisor B-3):
+- **Heat (RC-06, RC-07)** is `open_risk`: qty × (**mark** − stop), not fill − stop. A position whose mark is beyond its stop makes `open_risk` None, so every entry is refused until it closes. A failed stop is an incident, not freed heat.
+- **Sizing** is M5's sizer, which works from conservative equity (realised P&L plus **unrealised losses only**). This replaces ResearchSizing's plain-equity sizing for cycle-2 trials.
+- **SZ-2** (stop ≥ 0.5 × ATR(14) Wilder) and **SZ-3** (stop ≥ 10 ticks) apply. A strategy whose stop is tighter is refused, not resized.
 
 | check | in research | how |
 |---|---|---|
-| RC-01 kill switch | yes, as the halt latch of RC-10/11 | see halts below |
+| SZ-1..4 | yes | M5 sizer |
+| RC-01 kill switch | yes, as the halt latch | see halts |
 | RC-02 env / PHASE | N/A | no environment in a backtest |
-| RC-03 data freshness | already enforced | engine rejects `no_bar_closed_at_decision_time` |
-| RC-04 symbol tradable | N/A | historical venue state unknown (V-14 survivorship) |
-| RC-05 per-trade risk 0.5% | yes | ResearchSizing already equals it; the gate re-checks |
-| RC-06 heat 3% | **yes, new** | open risk = Σ qty·\|fill − stop\| over open positions and pending entries |
-| RC-07 cluster 1.5% | **yes, new** | the whole universe is cluster CRYPTO: **at most 3 full-size positions** |
-| RC-08 max 5 positions | yes | never binding while RC-07 binds at 3 |
-| RC-09 one per symbol | already enforced | `already_positioned`, `entry_already_pending` |
-| RC-10 day loss 2% | **yes, new** | halt |
-| RC-11 drawdown 10% | **yes, new** | halt |
-| RC-12a..f leverage, margin, liquidation | partly already | 3× and margin in the engine; RC-12f (liquidation ≥ 1.5× stop distance) added |
-| RC-13 3-loss cooldown 24h | **yes, new** | from closed-trade outcomes |
-| RC-14 ≤ 3 entries per hour | **yes, new** | on 1h bars: at most 3 entries per decision bar |
-| RC-15 API error breaker | N/A | no venue in a backtest |
-| RC-16 CRISIS / sentiment | CRISIS yes, sentiment N/A | regime from daily bars closed before T; M5 Q2 ruled the block stays, with the label's FAIL recorded |
+| RC-03 freshness | already enforced | `no_bar_closed_at_decision_time` |
+| RC-04 tradable | N/A | historical venue state unknown (V-14) |
+| RC-05..RC-08 | yes | M5 functions; cluster CRYPTO, so **at most 3 full-size positions** |
+| RC-09 | already enforced | `already_positioned`, `entry_already_pending` |
+| RC-10, RC-11 | yes | halts below |
+| RC-12a..f | yes | M5 functions (3×, margin, liquidation ≥ 1.5× stop distance) |
+| RC-13 3-loss cooldown 24 h | yes | from closed-trade outcomes |
+| RC-14 ≤ 3 entries per hour | yes | at most 3 entries per decision bar |
+| RC-15 API breaker | N/A | no venue |
+| RC-16 | CRISIS yes, sentiment N/A | regime from daily bars closed before T. M5 Q2 ruled that the block stays, with the label's FAIL recorded |
 
-**Halts.** Live, RC-10 and RC-11 latch the kill switch until a **human** disarms it. A backtest has no human, so this needs a proxy, and the proxy is a modelling choice:
-- **RC-10:** no new entries until the next 00:00 UTC. This assumes a disarm within a day, which is optimistic.
-- **RC-11:** no new entries for the rest of the test window. A fold that halts stays halted, and its later trades are simply absent.
-- Open positions keep their stops and exits. Live, M5 only blocks entries; flattening is M6, interface only.
+**Halts (advisor ruling on Q1).**
+- **RC-11:** the high-water mark is carried **across the stitched OOS folds**, and a ≥ 10% drawdown latches **permanently**: no entries for the rest of the run. Live, nothing resets the high-water mark, so this is not harsher than live; it is live.
+- **RC-10:** entries resume at the **first 00:00 UTC at least 24 h after the halt**. With "next 00:00", RC-10 would do nothing for a strategy that only trades at 22:00.
+- Open positions keep their stops and exits. M5 only blocks entries; flattening is M6, interface only.
+- Selection (in-sample) runs each start with fresh gate state. Only the OOS chain is stitched.
+- **For the owner:** M5 has **no procedure for resetting the high-water mark**. Live, a 10% drawdown ends trading until one is designed, reviewed and pinned.
 
-**Simultaneous entries (needs a ruling).** With the cluster cap at 3, entries that fire on the same bar compete for capacity. The engine visits instruments in sorted order, so BTC, DOGE and ETH would always beat SOL, UNI and XRP. That is deterministic but arbitrary, and it biases the universe. Proposal: an entry intent carries a strategy-declared `priority`, its signal strength in σ units, and ties break by inst_id. This is an `OrderIntent` field and an engine change, reviewed together with the gate.
+**Simultaneous entries (advisor ruling on Q2).**
+- The adapter visits instruments in sorted order (`strategy/base.py` `on_bar`), and `_accept` takes intents in that order. Under the cap of 3, BTC, DOGE and ETH would always win.
+- The default order becomes a neutral shuffle keyed on `sha256(ts, inst_id)`. This covers the M4 baselines too.
+- A strategy may declare a `priority` only in its pinned rationale, as part of its code version. Ties always break by the hash, never by inst_id.
 
-**Consequence to expect.** At 0.5% risk per trade, about 20 consecutive full losses reach RC-11. Strategies with long losing runs will halt mid-fold and trade less, and G-3 (trade count) becomes easier to fail. That is the point of D3, not a side effect to tune away.
+**Consequence to expect.**
+- At 0.5% risk per trade, about 20 consecutive full losses reach RC-11, and the stitched high-water mark makes that final.
+- Strategies with losing runs will trade less, and G-3 becomes easier to fail. That is D3 doing its job.
 
 ## 3. D2: spread collection and the calibration rule
 
-**Collector (built in this change).**
-- `python -m okxq.data.spreads` polls public `/api/v5/market/books` (5 levels) for the 8 research instruments every 60 s on a fixed grid. It appends one JSON line per instrument to `data/<env>/spreads/YYYY-MM-DD.jsonl`.
-- Each line keeps the venue's exact price and size strings, the venue timestamp, and the local request and receive times.
-- A failed or invalid book is written as a **gap line** with the reason, never dropped or repaired. A run with no samples, or with more gaps than samples, exits 1 and is not stamped.
-- `scripts/collect_spreads.ps1 -Install` registers an hourly task (59-minute runs, S4U, wake-to-run, no overlap). `-Status` exits 1 if the last success is more than 2 h old.
-- It must run on the **owner's machine**. A cloud container is deleted with everything it collected.
-- First live check, from the cloud host on 2026-10-03: 2 polls, 16 samples, 0 gaps. Full spreads in bp: BTC 0.012, ETH 0.037, XRP 0.67, SOL 0.84, DOGE 1.07, UNI 1.10, NEAR 2.11, SAND 2.7–4.0.
+**Collector (built).**
+- `python -m okxq.data.spreads` polls public `/api/v5/market/books` (5 levels) for the 8 research instruments every 60 s on a fixed grid. It appends to `data/<env>/spreads/YYYY-MM-DD.jsonl` with exact venue strings, the venue timestamp, and the local request and receive times.
+- A failed or invalid book is a **gap line**, never dropped or repaired.
+- A run is stamped successful only if **every instrument** has samples and no more gaps than samples (fixed after review: the first version judged this globally).
+- `scripts/collect_spreads.ps1 -Install` registers an hourly task. `-Status` exits 1 if the last success is more than 2 h old.
+- First live check from the cloud host: 2 polls, 16 samples, 0 gaps. Full spreads in bp: BTC 0.012, ETH 0.037, XRP 0.67, SOL 0.84, DOGE 1.07, UNI 1.10, NEAR 2.11, SAND 2.7–4.0.
+- **The `-Install` and `-Status` paths have not run on Windows.** The 14-day clock starts only when the owner's `-Status` output (result 0, fresh stamp) is recorded on the audit chain, as U-2 was.
 
-**Pre-registered minimum before any calibration reads the files:**
-- 14 complete UTC days;
-- at least 90% non-gap polls per instrument per day;
-- the start and end dates recorded on the audit chain.
+**Minimum before calibration reads the files:**
+- 14 complete UTC days after that record;
+- at least 90% non-gap polls per instrument per day.
 
-**Proposed calibration rule (to be fixed and hashed before the files are read).**
-- slip-v2's spread term changes from the Abdi-Ranaldo estimate to a volatility-scaled measured spread:
-  `half_spread_t = max(1 tick, k_i · σ_1h,t · price)`
-- `k_i` is the **75th percentile** of (measured half-spread / σ_1h) per instrument over the collection.
-- σ_1h comes from **mark-price** 1h candles over the same hours. The collection period is inside the sealed holdout, and the calibration door serves only mark and index candles there, never `last`.
-- Rationale: spreads widen with volatility, so a σ-scaled model carries some stress into 2020–2022, which a flat 2026 median would not.
+**Calibration rule (fixed and hashed before the files are read):**
+- `half_spread_t = max(1 tick, k_i · σ_1h,t · price)`.
+- `k_i` is the **75th percentile** over the collection of (measured half-spread / σ_1h,mark), per instrument.
+- σ comes from 1h **mark** candles through the calibration door. The collection lies inside the sealed holdout, and that door serves only mark and index there. This reads holdout-period volatility, not direction; the read is recorded.
+- **Mark vs last.** Research applies k to σ from **last-price** bars. The ratio σ_mark / σ_last is measured per instrument on **pre-holdout** data and multiplies k_i.
+- **Staleness.** A sample whose `venue_ms` is more than **5 s** before its `req_ms` is dropped as stale. The share dropped is reported.
+- **Coverage.** The range of σ actually covered is recorded. A high-volatility day is not required, because none can be guaranteed.
 
-**What this rule cannot fix (stated now so it is not discovered later).**
-- 2026 order books are deeper than 2020–2021 alt books. A σ-scaling captures volatility-driven widening, not the secular improvement in liquidity.
-- So the calibrated spread will **understate** early-period alt costs by an unknown amount. G-9's 2× slippage stress is the only protection, and the per-instrument and per-year attribution must be read with that in mind.
+**What this rule cannot fix.**
+- 2026 books are deeper than 2020–2021 alt books, so the calibrated spread will **understate** early-period alt costs.
+- G-9 doubling a near-zero spread protects almost nothing there. A candidate that passes is therefore **also reported under the old slip-v2** (reported, not gated).
 
-**Impact (`y_impact`)** stays UNCALIBRATED. The depth levels are recorded for M7 and not used now.
+**Impact (`y_impact`)** stays UNCALIBRATED. Depth is recorded for M7.
 
 ## 4. Sequencing and trial budget
 
-One cycle-2 config: measured fees + calibrated spread + risk gate. Each piece is pinned, and together they give one cost/risk sha. Nothing runs under a half-built config.
-
 | step | what | trials |
 |---|---|---|
-| 1 | Advisor reviews this design, the RiskGate and priority change, and the two strategy documents | 0 |
-| 2 | Build the gate; golden digest unchanged with `risk_gate=None`; 100% branch coverage on the gate | 0 |
-| 3 | Collect for ≥ 14 days; run the hashed calibration; pin the cycle-2 config | 0 |
-| 4 | intraday_momentum feasibility check (§5); stop here if it fails | 0 |
-| 5 | intraday_momentum, grid 4 (one grid; a second needs sign-off) | ≈ 225 |
-| 6 | Re-pricing screen for the M4 baselines: re-price their **stored** cycle-1 OOS trades under the cycle-2 fees and spread (arithmetic, not a trial). Re-run a baseline under the full cycle-2 config only if its re-priced pooled OOS net is > 0 | 0, or ≈ 450 per baseline re-run |
+| 1 | Owner decides §0; owner installs the collector and supplies Windows `-Status` evidence | 0 |
+| 2 | Build the RiskGate, the hash-shuffle order and the priority field (reviewed); golden digest unchanged with `risk_gate=None`; 100% branch coverage on the gate | 0 |
+| 3 | Pin the intraday_momentum rationale (hash). Then run its **fees-only** feasibility bound (§5), which can only stop it | 0 |
+| 4 | 14 days of collection; hashed calibration; pin the cycle-2 config; full feasibility check | 0 |
+| 5 | intraday_momentum: grid 4, plus the pre-registered window-shift check (two fixed-parameter OOS re-runs, counted) | about 225 + the shift runs |
+| 6 | Baselines only if the owner chooses option 2 or 3 in §0 | 0 or about 1,350 |
 
-Step 6 is a screen, not evidence. Re-pricing ignores path effects (sizing on changed equity, the risk gate), so a positive re-price earns a proper re-run, and a negative one ends the matter. Expected N after cycle 2: about 1,530 if only intraday_momentum runs.
+Expected N after cycle 2, without a baseline re-run: about 1,530 plus the window-shift trials. I have not yet measured how many trials one fixed-parameter OOS re-run logs, so I am not giving a number.
 
-## 5. intraday_momentum feasibility check (signal-free, pre-registered)
+## 5. intraday_momentum feasibility check (signal-free, run only after the rationale is pinned)
 
-- Before any trial, compute, per instrument over the research window, the mean absolute 22:00–23:00 UTC return `E|r|` and the hit rate needed to break even:
-  `p* = ½ + c / (2·E|r|)`, where `c` is the round-trip cost under the cycle-2 config (≈ 10 bp fees + 2 × half-spread).
-- This uses no signal and selects nothing, so it can't choose a parameter. It only asks whether any plausible signal could pay the toll.
-- **Rule:** if the universe-median `p*` is **above 0.56**, the candidate is not run, and the result is recorded as DISCARDED on feasibility, with no trials added.
-- Why 0.56: [Guessing] published intraday-momentum effects are of the order of a few percent of explained variance, which corresponds to hit rates in the low 0.50s. A cutoff of 0.56 already gives the hypothesis generous room. The advisor should set this number, not me.
+- Break-even hit rate: `p* = ½ + c / (2·E|r|)`, where `c` is the round-trip cost.
+- E|r| is computed two ways, using **magnitude only**, never direction:
+  - the unconditional mean absolute 22:00–23:00 UTC return per instrument;
+  - the same mean on the days the k = 0.5 filter would pass.
+- The **more generous** (lower) p* of the two is used.
+- **Rule (advisor ruling on Q4):** if the universe-median p* is **above 0.55**, the candidate is DISCARDED on feasibility with no trials. [Guessing] Gao et al.'s R² of about 1.6% maps to a hit rate of about 0.54.
+- **Step 3 (fees only):** c = 10 bp, with no spread. This lower bound can only stop the candidate, never start it.
+- **Step 4 (full):** c = 10 bp + 2 × calibrated half-spread.
+- **Also reported, signal-free:** the research-data volume profile by UTC hour. The cited mechanisms are strongest in high-volume sessions, and 22:00 UTC was chosen to avoid settlements, not for the mechanism.
 
-## 6. New venue fact: the funding interval changes at runtime (V-15)
+## 6. Venue fact V-15: the funding interval changes at runtime
 
-- [Certain, archived data] SAND-USDT-SWAP settled at 00/08/16 UTC until 2026-10-02 16:00, when its rate hit the −1% floor. From 20:00 it settled **every 4 h** (20, 00, 04, 08, 12). The public `funding-rate` endpoint confirms 4 h (`nextFundingTime − prevFundingTime = 14,400,000 ms`).
+- [Certain, archived data] SAND-USDT-SWAP settled at 00/08/16 UTC until 2026-10-02 16:00, when its rate reached −1%, the floor. From 20:00 it settled **every 4 h**. The public `funding-rate` endpoint confirms a 4 h gap (14,400,000 ms).
 - The other seven instruments are on 00/08/16 across all 289 archived settlements.
-- Consequences:
-  - research funding (funding-bound-v1) is on a fixed 8 h grid, so **research cannot see this**;
-  - a strategy that is "flat across settlements" by clock arithmetic is wrong live, and live code must read `nextFundingTime`;
-  - 22:00–23:00 UTC is clear of both the 8 h and the 4 h grids, so intraday_momentum's window survives this case;
-  - a 1 h or 2 h interval, if OKX uses one, would not be clear. [Guessing] I have not seen one.
+- [Likely, one event] A capped rate shortens the interval. The general rule is not established from a single case.
+- Research funding (funding-bound-v1) uses a fixed 8 h grid. So **research understates SAND-short funding while it sits at the floor**: 1% per 4 h live against 1% per 8 h modelled.
+- Live code must read `nextFundingTime`. 22:00–23:00 UTC is clear of both the 8 h and the 4 h grids.
 
-## 7. Questions for the advisor
+## 7. Questions: answered by the advisor
 
-1. Is the halt proxy right (RC-10 resumes at the next 00:00, RC-11 latches for the rest of the window)? Or should RC-10 also latch for the window, which is harsher?
-2. Strategy-declared `priority` for simultaneous entries, or a neutral deterministic shuffle keyed on hash(ts, inst)?
-3. Calibration: the 75th percentile and σ from mark candles. Is 14 days enough? Should a high-volatility day be required (which can't be guaranteed)?
-4. The feasibility cutoff `p* > 0.56`: set the number.
-5. Is the re-pricing screen in step 6 acceptable in place of the owner's blanket re-run?
-6. Do you agree btc_lead_lag at 1h should not be built (review document)?
+- **Q1 (halts):** see §2.
+- **Q2 (entry order):** hash shuffle by default; see §2.
+- **Q3 (calibration):** 14 days, 75th percentile, no volatility-day requirement; with the mark/last correction and staleness rule in §3.
+- **Q4 (feasibility cutoff):** 0.55.
+- **Q5 (re-pricing screen):** acceptable only as a recommendation the owner accepts; see §0.
+- **Q6 (btc_lead_lag):** do not build at 1h. A daily variant would need its own rationale and the reference view.
+
+## 8. Revision 1: advisor review of 7ae7250 (PROCEED WITH CHANGES)
+
+| finding | disposition |
+|---|---|
+| B-1: the clock window escapes G-6 (`entry_lead_h` rounds back to itself; `gates.py` only reports unperturbable parameters) | Window-shift check pre-registered in intraday_momentum.md |
+| B-2: warmup of 48 bars cannot hold σ at −20% warmup; Wilder ATR(24) unconverged | warmup_bars 480, rationale updated |
+| B-3: D3 departed from M5 (fill-to-stop, plain equity, no SZ-2/3, lenient RC-11, a dead RC-10) | §2 rewritten to M5's semantics |
+| B-4: replacing the owner's re-run is the owner's decision | §0 |
+| Collector: global ok; non-integer seqId crashed the run | Fixed, with tests: per-instrument judgement; seqId → BookError gap line |
+| Collector: Windows paths unverified | The 14-day clock waits for the owner's `-Status` evidence |
+| Over-claims: G-8 "well-powered", trade count ignoring RC-13, the SAND/NEAR cap-size claim, V-15 certainty, r_first "log" with a simple formula, the N estimate | Corrected in each document |

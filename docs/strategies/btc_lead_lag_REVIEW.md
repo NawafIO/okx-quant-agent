@@ -1,4 +1,4 @@
-# btc_lead_lag: design review (DRAFT, for the advisor). Verdict proposed: **do not build at 1h**
+# btc_lead_lag: design review. Verdict: **do not build at 1h** (advisor: STOP, agreed, review of 7ae7250)
 
 The owner asked for this review "in parallel" with intraday_momentum. Nothing here has been built or run.
 
@@ -13,7 +13,7 @@ The owner asked for this review "in parallel" with intraday_momentum. Nothing he
 
 1. **The documented lag is minutes, not hours, and only for small caps.**
    - Recent high-frequency evidence on BTC→altcoin price transmission ([Asia-Pacific Financial Markets, 2026](https://link.springer.com/article/10.1007/s10690-026-09589-z)) reports that **large and medium caps react to BTC simultaneously**, with strong unlagged correlation. Only small caps show lagged responses, and those last **several minutes**.
-   - Our universe is ETH, SOL, XRP, DOGE, NEAR, UNI and SAND. [Likely] All of them are large or mid caps on OKX.
+   - Our universe is ETH, SOL, XRP, DOGE, NEAR, UNI and SAND. [Guessing] All of them fall in the paper's large or mid tier; SAND and NEAR may not (advisor). The 1h verdict does not depend on it: even small-cap lags are minutes long, gone by T+1's open.
    - The lag the strategy needs has, on that evidence, closed inside the bar we would detect it in.
    - The Granger-causality evidence for BTC→alts is mostly at daily frequency (the same search turned up several studies). A daily lag is a different strategy, with a different cost profile.
    - [Certain] The full texts were egress-blocked, so this rests on abstracts.

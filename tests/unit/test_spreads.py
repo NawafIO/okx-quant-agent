@@ -65,6 +65,8 @@ def test_a_missing_seq_id_is_kept_as_none() -> None:
         (book(bids=[["100.1", "1"]], asks=[["100.1", "1"]]), "crossed or locked"),
         (book(ts=None), "ts"),
         (book(ts="x"), "ts"),
+        (book(seqId="x"), "seqId"),
+        (book(seqId=[1]), "seqId"),
     ],
 )
 def test_an_unusable_book_is_refused_not_coerced(response: Any, msg: str) -> None:
@@ -136,7 +138,8 @@ def test_collect_polls_on_a_fixed_grid_and_records_gaps(tmp_path: Path) -> None:
         sleep_s=clk.sleep,
     )
     assert (c.polls, c.samples, c.gaps) == (3, 3, 9)
-    assert not c.ok  # more gaps than samples
+    assert not c.ok and c.failing == ["BAD", "CROSS", "REJ"]
+    assert c.per_inst["OK"] == [3, 0] and c.per_inst["BAD"] == [0, 3]
     rows = read(tmp_path)
     oks = [r for r in rows if "gap" not in r]
     # Grid, not drift: every poll starts exactly on start + k * 60 s despite 400 ms per poll.
@@ -223,3 +226,15 @@ def test_main_refuses_live_and_silly_arguments(argv: list[str]) -> None:
     with pytest.raises(SystemExit) as e:
         spreads.main(argv)
     assert e.value.code == 2
+
+
+def test_one_dead_instrument_fails_the_run_however_healthy_the_rest(env: Path) -> None:
+    """Advisor should-fix: a global gaps <= samples let one instrument fail on every poll
+    while seven healthy ones stamped success."""
+    FakeApi.responses = {"SAND-USDT-SWAP": VenueError("down")}
+    assert spreads.main(["--env", "PAPER", "--interval-s", "5", "--duration-s", "1"]) == 1
+    assert not (env / "state/paper/collect_spreads.last_ok").exists()
+
+
+def test_a_run_with_no_instruments_is_not_ok() -> None:
+    assert not spreads.Counts().ok
