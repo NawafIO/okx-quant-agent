@@ -1,0 +1,126 @@
+{
+  "measured_utc": "2026-10-03T12:12:56.699791+00:00",
+  "instruments": {
+    "BTC-USDT-SWAP": {
+      "tick_size": "0.1",
+      "lot_size_base": "0.0001",
+      "min_size_base": "0.0001",
+      "mmr": "0.004"
+    },
+    "CL-USDT-SWAP": {
+      "tick_size": "0.01",
+      "lot_size_base": "0.1",
+      "min_size_base": "0.1",
+      "mmr": "0.01"
+    },
+    "DOGE-USDT-SWAP": {
+      "tick_size": "0.00001",
+      "lot_size_base": "10.00",
+      "min_size_base": "10.00",
+      "mmr": "0.01"
+    },
+    "ETH-USDT-SWAP": {
+      "tick_size": "0.01",
+      "lot_size_base": "0.001",
+      "min_size_base": "0.001",
+      "mmr": "0.004"
+    },
+    "HYPE-USDT-SWAP": {
+      "tick_size": "0.001",
+      "lot_size_base": "0.1",
+      "min_size_base": "0.1",
+      "mmr": "0.01"
+    },
+    "MU-USDT-SWAP": {
+      "tick_size": "0.01",
+      "lot_size_base": "0.01",
+      "min_size_base": "0.01",
+      "mmr": "0.01"
+    },
+    "NEAR-USDT-SWAP": {
+      "tick_size": "0.001",
+      "lot_size_base": "1.0",
+      "min_size_base": "1.0",
+      "mmr": "0.01"
+    },
+    "NIGHT-USDT-SWAP": {
+      "tick_size": "0.000001",
+      "lot_size_base": "100",
+      "min_size_base": "100",
+      "mmr": "0.02"
+    },
+    "PEPE-USDT-SWAP": {
+      "tick_size": "0.000000001",
+      "lot_size_base": "1000000.0",
+      "min_size_base": "1000000.0",
+      "mmr": "0.0065"
+    },
+    "PUMP-USDT-SWAP": {
+      "tick_size": "0.000001",
+      "lot_size_base": "1000",
+      "min_size_base": "1000",
+      "mmr": "0.01"
+    },
+    "SAND-USDT-SWAP": {
+      "tick_size": "0.00001",
+      "lot_size_base": "10",
+      "min_size_base": "10",
+      "mmr": "0.01"
+    },
+    "SNDK-USDT-SWAP": {
+      "tick_size": "0.1",
+      "lot_size_base": "0.001",
+      "min_size_base": "0.001",
+      "mmr": "0.0065"
+    },
+    "SOL-USDT-SWAP": {
+      "tick_size": "0.01",
+      "lot_size_base": "0.01",
+      "min_size_base": "0.01",
+      "mmr": "0.004"
+    },
+    "SUI-USDT-SWAP": {
+      "tick_size": "0.0001",
+      "lot_size_base": "1",
+      "min_size_base": "1",
+      "mmr": "0.01"
+    },
+    "TRUMP-USDT-SWAP": {
+      "tick_size": "0.001",
+      "lot_size_base": "0.1",
+      "min_size_base": "0.1",
+      "mmr": "0.01"
+    },
+    "UNI-USDT-SWAP": {
+      "tick_size": "0.001",
+      "lot_size_base": "1",
+      "min_size_base": "1",
+      "mmr": "0.01"
+    },
+    "WLD-USDT-SWAP": {
+      "tick_size": "0.0001",
+      "lot_size_base": "1",
+      "min_size_base": "1",
+      "mmr": "0.01"
+    },
+    "XAU-USDT-SWAP": {
+      "tick_size": "0.1",
+      "lot_size_base": "0.001",
+      "min_size_base": "0.001",
+      "mmr": "0.004"
+    },
+    "XRP-USDT-SWAP": {
+      "tick_size": "0.0001",
+      "lot_size_base": "1.00",
+      "min_size_base": "1.00",
+      "mmr": "0.004"
+    },
+    "ZEC-USDT-SWAP": {
+      "tick_size": "0.01",
+      "lot_size_base": "0.01",
+      "min_size_base": "0.01",
+      "mmr": "0.01"
+    }
+  },
+  "problems": []
+}
