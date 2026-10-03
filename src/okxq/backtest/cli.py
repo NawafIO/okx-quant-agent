@@ -303,9 +303,14 @@ def cmd_sanity_random(args: argparse.Namespace) -> int:
         ]
         ladder.append((n, mean(bps) if bps else 0.0))
 
+    # Starting equity is sized so cumulative cost stays below 25% of it (ruling): the first
+    # real-data run cost 48.8 bps x $1,000 x ~9,675 trades/run = ~$47.2k at the user fees,
+    # so >= $189k is needed; $250k keeps it near 19%. With fixed notional, equity does not
+    # change trade size - the gate is "no entry resized or refused", not an equity floor.
+    sanity_equity = Decimal(250_000)
     ok = True
     for label, fees in fee_sets:
-        cfg = costs.research_config(fees)
+        cfg = costs.research_config(fees, initial_equity=sanity_equity)
         print(f"\n== fees: {label} (maker {fees.maker}, taker {fees.taker}, {fees.provenance}) ==")
         print(f"   cost config sha256 {costs.cost_config_sha(cfg)}")
         print(

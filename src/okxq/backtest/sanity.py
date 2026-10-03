@@ -1,19 +1,23 @@
 """The random-entry cost-model check, built so that it cannot pass vacuously.
 
-Chief Advisor ruling (2026-10-03), after the first real-data run "passed" on a ruined
-account. Random entries must lose, and the loss must be the modelled costs and nothing else:
+Chief Advisor rulings (2026-10-03). The first real-data run "passed" on a ruined account;
+the rebuilt check then failed with power on a pre-cost mean of -3.6 bps, which an A/B run
+traced to the 3% STOP RULE meeting real price dynamics (stops never hit: +0.17 +/- 0.87).
+Engine bias is therefore tested only where the truth is known - the martingale invariant in
+:mod:`okxq.backtest.martingale` - and on real data this check tests COSTS:
 
-1. **No ruin**: every run ends above ``ruin_floor`` x starting equity (fixed notional makes
-   ruin near-impossible; the tripwire stays).
-2. **Power**: pooled across seeds, >= ``min_trades`` closed trades and a per-trade standard
-   error <= ``max_stderr_bps``.
-3. **No engine bias**: the PRE-COST per-trade return (gross plus slippage, in bps of
-   entry notional) is within ``max_abs_precost_bps`` of zero.
-4. **Costs reconcile**: mean net = mean pre-cost - mean modelled cost, so with check 3 the
-   loss is the costs within the same tolerance (reported explicitly).
-5. **Every instrument and side loses**: a cell with net >= 0 is how a mis-signed funding
-   bound or a hole in the spread term would show up.
-6. **Impact is live**: mean slippage per fill rises strictly with order size.
+1. **No entry resized or refused** for margin, minimum size or liquidity (fixed notional;
+   starting equity sized so expected cumulative cost stays below 25% of it).
+2. **Power**: >= ``min_trades`` pooled closed trades and a net standard error <=
+   ``max_stderr_bps``.
+3. **Costs reconcile**: per-trade net = pre-cost - modelled cost, exactly.
+4. **Every instrument and side loses** - a mis-signed funding bound or a hole in the spread
+   term shows up as a cell with net >= 0.
+5. **Impact is live**: slippage per fill rises strictly with order size.
+6. **Net expectancy is negative.**
+
+The real-data PRE-COST mean is reported, not gated: it measures the reference strategy's
+interaction with the market (a design fact for M4), not the engine.
 """
 
 from __future__ import annotations
@@ -32,11 +36,13 @@ from okxq.backtest.engine import BacktestResult
 class SanityPolicy:
     min_trades: int = 10_000
     max_stderr_bps: float = 1.0
-    max_abs_precost_bps: float = 2.0
-    ruin_floor: float = 0.5
 
 
 POLICY = SanityPolicy()
+
+
+#: Rejections that mean an entry did not trade at its intended size.
+RESIZE_REASONS = frozenset({"insufficient_margin", "entry_remainder_expired", "entry_no_liquidity"})
 
 
 @dataclass(frozen=True)
@@ -53,6 +59,8 @@ class Check:
     name: str
     passed: bool
     detail: str
+    #: Reported only; does not decide the verdict.
+    gated: bool = True
 
 
 @dataclass(frozen=True)
@@ -61,7 +69,7 @@ class SanityReport:
 
     @property
     def passed(self) -> bool:
-        return all(c.passed for c in self.checks)
+        return all(c.passed for c in self.checks if c.gated)
 
 
 def trade_bps(result: BacktestResult) -> list[TradeBps]:
@@ -98,13 +106,20 @@ def evaluate(
 ) -> SanityReport:
     """``size_ladder``: (notional per trade, mean taker slippage bps per fill), ascending."""
     checks: list[Check] = []
-    floor = initial_equity * Decimal(repr(policy.ruin_floor))
-    worst = min((r.equity_curve[-1].equity for r in results if r.equity_curve), default=None)
+    resized = [
+        x
+        for r in results
+        for x in r.rejections
+        if x.reason in RESIZE_REASONS or x.reason.startswith("sizer:")
+    ]
+    finals = [r.equity_curve[-1].equity for r in results if r.equity_curve]
     checks.append(
         Check(
-            "no ruin",
-            worst is not None and worst >= floor,
-            f"lowest final equity {worst} vs floor {floor}",
+            "no entry resized or refused",
+            not resized and bool(finals),
+            f"{len(resized)} resized/refused entries; final equity "
+            f"{min(finals) if finals else 'n/a'} .. {max(finals) if finals else 'n/a'} "
+            f"(start {initial_equity})",
         )
     )
 
@@ -118,23 +133,25 @@ def evaluate(
     checks.append(
         Check(
             "power",
-            len(rows) >= policy.min_trades and pre_se <= policy.max_stderr_bps,
-            f"{len(rows)} trades (>= {policy.min_trades}); pre-cost stderr {pre_se:.3f} bps "
+            len(rows) >= policy.min_trades and net_se <= policy.max_stderr_bps,
+            f"{len(rows)} trades (>= {policy.min_trades}); net stderr {net_se:.3f} bps "
             f"(<= {policy.max_stderr_bps})",
         )
     )
     checks.append(
         Check(
-            "no engine bias",
-            abs(pre_mu) <= policy.max_abs_precost_bps,
-            f"pre-cost mean {pre_mu:+.3f} bps (|.| <= {policy.max_abs_precost_bps})",
+            "pre-cost mean (reported, not gated)",
+            True,
+            f"{pre_mu:+.3f} +/- {pre_se:.3f} bps - the reference strategy meeting the market; "
+            "engine bias is gated by the martingale invariant instead",
+            gated=False,
         )
     )
     gap = net_mu - (pre_mu - cost_mu)
     checks.append(
         Check(
             "costs reconcile",
-            abs(gap) < 1e-6 and abs(net_mu + cost_mu) <= policy.max_abs_precost_bps,
+            abs(gap) < 1e-6,
             f"net {net_mu:+.3f} = pre-cost {pre_mu:+.3f} - cost {cost_mu:.3f} bps (gap {gap:.2e})",
         )
     )

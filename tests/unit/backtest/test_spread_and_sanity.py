@@ -74,6 +74,14 @@ LADDER = [(D(1000), 1.0), (D(100000), 2.0), (D(1000000), 5.0)]
 FAIR = sanity.SanityPolicy(min_trades=4, max_stderr_bps=50.0)
 
 
+def with_rejection(r: BacktestResult, reason: str) -> BacktestResult:
+    from dataclasses import replace
+
+    from okxq.backtest.types import Rejection
+
+    return replace(r, rejections=(Rejection(0, "A", reason),))
+
+
 def symmetric(inst: str = "A") -> list[tuple[str, Side, str, str, str]]:
     # pre-cost (gross + slippage) +5 / -5 bps on alternating trades -> mean 0
     out = []
@@ -93,15 +101,21 @@ def test_too_few_trades_fails_on_power() -> None:
     assert {c.name for c in rep.checks if not c.passed} == {"power"}
 
 
-def test_a_ruined_account_fails() -> None:
-    rep = sanity.evaluate([result(symmetric(), final="10")], D(100000), LADDER, FAIR)
-    assert "no ruin" in {c.name for c in rep.checks if not c.passed}
+def test_a_resized_or_refused_entry_fails() -> None:
+    for reason in ("insufficient_margin", "sizer:below_min_size", "entry_remainder_expired"):
+        r = with_rejection(result(symmetric()), reason)
+        rep = sanity.evaluate([r], D(100000), LADDER, FAIR)
+        assert {c.name for c in rep.checks if not c.passed} == {"no entry resized or refused"}
 
 
-def test_engine_bias_fails() -> None:
+def test_real_data_pre_cost_is_reported_not_gated() -> None:
+    """Ruling: on real data the pre-cost mean measures the strategy meeting the market."""
     biased = [(i, s, "1.0", "1", "0.8") for i, s, *_ in symmetric()]  # pre-cost +18 bps
     rep = sanity.evaluate([result(biased)], D(100000), LADDER, FAIR)
-    assert "no engine bias" in {c.name for c in rep.checks if not c.passed}
+    info = [c for c in rep.checks if c.name.startswith("pre-cost")]
+    assert len(info) == 1
+    assert not info[0].gated
+    assert "+18" in info[0].detail
 
 
 def test_a_winning_instrument_side_fails() -> None:
