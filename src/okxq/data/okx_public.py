@@ -372,6 +372,17 @@ class OkxPublic:
                 break  # venue exhausted its retained history
         return [collected[k] for k in sorted(collected)]
 
+    # --- order book --------------------------------------------------------------------
+
+    def fetch_books_raw(self, inst_id: str, depth: int) -> dict[str, Any]:
+        """Raw ``/api/v5/market/books`` response (spread collector, cycle 2 D2). Unparsed on
+        purpose: :mod:`okxq.data.spreads` validates it, so a malformed book is recorded as a
+        gap rather than coerced into a number."""
+        response: dict[str, Any] = self._call(
+            self._ex.publicGetMarketBooks, {"instId": inst_id, "sz": str(depth)}
+        )
+        return response
+
 
 def utc(ms: int) -> datetime:
     """Convert epoch milliseconds to a timezone-aware UTC datetime."""

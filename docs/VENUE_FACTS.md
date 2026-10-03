@@ -308,3 +308,25 @@ Consequences (Chief Advisor ruling, M4 checkpoint 1):
 - Every M4 result carries the survivorship caveat (docs/M4_DESIGN.md) and a per-instrument breakdown.
 - Promotion needs the owner's written acceptance of this fact on the audit chain (U-3).
 - The only known route is a cross-venue archive. It is **not a repair**: it has different prices, funding and listing dates. The decision belongs to the user.
+
+---
+
+## 11. V-15: the funding interval changes at runtime (observed 2026-10-03, cycle 2)
+
+**A capped funding rate shortens the instrument's settlement interval. Clock arithmetic on a
+fixed 8h grid is wrong live.**
+
+| Evidence (realised funding archive, calibration door) | |
+|---|---|
+| 7 of 8 research instruments | 289 settlements 2026-06-29 08:00 .. 2026-10-03 08:00, all at 00/08/16 UTC, every gap 8h |
+| `SAND-USDT-SWAP` | 00/08/16 until 2026-10-02 16:00 (rate **-0.0100**, the floor); then 20:00, 00:00, 04:00, 08:00, 12:00: every gap **4h** |
+| `GET /api/v5/public/funding-rate?instId=SAND-USDT-SWAP` (2026-10-03) | `nextFundingTime - prevFundingTime = 14,400,000` ms; `minFundingRate -0.01` |
+
+Consequences:
+- Research funding (funding-bound-v1) is synthetic on a fixed 8h grid, so **no backtest can
+  see an interval change**. More settlements per day at a capped rate is a cost a backtest
+  understates for exactly the instruments under funding stress.
+- A strategy "flat across settlements" must, live, read `nextFundingTime` per instrument and
+  never derive it from the clock. 22:00-23:00 UTC is clear of both the 8h and the 4h grids.
+- [Guessing] Whether OKX also uses 1h or 2h intervals, and when an instrument reverts to 8h,
+  is not yet observed; the weekly funding archive will show it.
