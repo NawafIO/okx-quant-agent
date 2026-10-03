@@ -1,0 +1,65 @@
+keltner_reversion version 8dec27355fd6; grid 8; span 2020-07-01..2025-09-30; sizing e32046ed9bbc; trials before this run 400
+
+VERDICT DISCARD   (N trials now 851; this run added 451)
+fees UNMEASURED_ASSUMPTION; cost 546f4fbccdb5; sizing e32046ed9bbc; gates 9066dca9f14b
+  G-1   FAIL     observed 0.6293350094974402855135317085  limit <= 0.15  
+  G-2   FAIL     observed 0.3953094769638139759589620928  limit >= 1.5  
+  G-3   PASS     observed 323  limit >= 100  
+  G-4   FAIL     observed 0.5332120856283217385434727381  limit >= 1.2  
+  G-5   PASS     observed OOS 0.5332120856283217385434727381 / IS 0.5124177458364956798496320319 = 1.040580834603767217044946355  limit >= 0.5 x IS  
+  G-6   FAIL     observed 0/16 held  limit PF >= 1.2 and MaxDD <= 0.15 for every +/-0.20  adx_max x0.80: PF 0.6204566768043361548334934350 DD 0.3442272806041445642880566985; adx_max x1.20: PF 0.5875534936092532907827098851 DD 0.9801178994650562859232661401; adx_n x0.80: PF 0.5937246241261289504336976050 DD 0.4513461603703249793493242474; adx_n x1.20: PF 0.5357225475822885631600500275 DD 0.9684623529747103493036052122; atr_n x0.80: PF 0.5421132244177355343106601255 DD 0.8417852743675034564266810861; atr_n x1.20: PF 0.5341061529323150980284540649 DD 0.9006030469187962846119217369; kc_k x0.80: PF 0.6100044374692959824178902620 DD 0.99005647672345564151457819; kc_k x1.20: PF 0.4317272085565692282385247787 DD 0.6627230059081833546701577433; kc_n x0.80: PF 0.5160870241651987112285143103 DD 0.8318395451165640470378367236; kc_n x1.20: PF 0.5283854462348283908034431093 DD 0.9292397284569204188857425647; stop_atr x0.80: PF 0.5092454457326060445995751059 DD 0.9312772682313073008383948222; stop_atr x1.20: PF 0.5452291010934675024148358068 DD 0.8333373348251949103385131226; time_stop_bars x0.80: PF 0.5064736600828864751855496937 DD 0.8882179583763201214490559021; time_stop_bars x1.20: PF 0.5384425463706491058276806041 DD 0.8801294897839007578178003732; warmup_bars x0.80: PF 0.5332120856283217385434727381 DD 0.8814600695892224965061560899; warmup_bars x1.20: PF 0.5332120856283217385434727381 DD 0.8814600695892224965061560899
+  G-7   INVALID  observed net profit not positive  limit top 5 <= 0.5 of net profit  
+  G-8   FAIL     observed 0.000000  limit >= 0.95 (N=851)  
+  G-9   FAIL     observed G-1 FAIL: 0.7476104391590574910656275870; G-2 FAIL: 0.2851376543909691918787641196; G-4 FAIL: 0.4024144298956204430048777096; G-7 INVALID: net profit not positive  limit fees x2, slippage x2, funding paid x2, funding received x0.5  
+  G-9 under stress: G-1 FAIL observed 0.7476104391590574910656275870
+  G-9 under stress: G-2 FAIL observed 0.2851376543909691918787641196
+  G-9 under stress: G-3 PASS observed 323
+  G-9 under stress: G-4 FAIL observed 0.4024144298956204430048777096
+  G-9 under stress: G-7 INVALID observed net profit not positive
+final params (full-span selection): {'kc_n': 20, 'atr_n': 10, 'kc_k': 2.5, 'adx_n': 14, 'adx_max': 20.0, 'stop_atr': 1.5, 'time_stop_bars': 24, 'warmup_bars': 500}
+
+walk-forward: 17 folds, 17 with a selection; 969 OOS trades
+  fold  0 test 2021-07-01:    23 trades, net    -11324.08, params {'kc_n': 20, 'atr_n': 10, 'kc_k': 2.5, 'adx_n': 14, 'adx_max': 20.0, 'stop_atr': 1.5, 'time_stop_bars': 24, 'warmup_bars': 500}
+  fold  1 test 2021-10-01:    31 trades, net     -1806.87, params {'kc_n': 20, 'atr_n': 10, 'kc_k': 2.5, 'adx_n': 14, 'adx_max': 20.0, 'stop_atr': 1.5, 'time_stop_bars': 12, 'warmup_bars': 500}
+  fold  2 test 2022-01-01:   124 trades, net     -9777.34, params {'kc_n': 20, 'atr_n': 10, 'kc_k': 2.0, 'adx_n': 14, 'adx_max': 20.0, 'stop_atr': 1.5, 'time_stop_bars': 24, 'warmup_bars': 500}
+  fold  3 test 2022-04-01:   106 trades, net    -11562.51, params {'kc_n': 20, 'atr_n': 10, 'kc_k': 2.0, 'adx_n': 14, 'adx_max': 20.0, 'stop_atr': 1.5, 'time_stop_bars': 24, 'warmup_bars': 500}
+  fold  4 test 2022-07-01:   103 trades, net    -11678.25, params {'kc_n': 20, 'atr_n': 10, 'kc_k': 2.0, 'adx_n': 14, 'adx_max': 20.0, 'stop_atr': 1.5, 'time_stop_bars': 24, 'warmup_bars': 500}
+  fold  5 test 2022-10-01:    76 trades, net     -9487.31, params {'kc_n': 20, 'atr_n': 10, 'kc_k': 2.5, 'adx_n': 14, 'adx_max': 25.0, 'stop_atr': 1.5, 'time_stop_bars': 24, 'warmup_bars': 500}
+  fold  6 test 2023-01-01:   126 trades, net    -12102.66, params {'kc_n': 20, 'atr_n': 10, 'kc_k': 2.0, 'adx_n': 14, 'adx_max': 20.0, 'stop_atr': 1.5, 'time_stop_bars': 24, 'warmup_bars': 500}
+  fold  7 test 2023-04-01:    53 trades, net     -4602.69, params {'kc_n': 20, 'atr_n': 10, 'kc_k': 2.5, 'adx_n': 14, 'adx_max': 20.0, 'stop_atr': 1.5, 'time_stop_bars': 24, 'warmup_bars': 500}
+  fold  8 test 2023-07-01:    23 trades, net        24.85, params {'kc_n': 20, 'atr_n': 10, 'kc_k': 2.5, 'adx_n': 14, 'adx_max': 20.0, 'stop_atr': 1.5, 'time_stop_bars': 24, 'warmup_bars': 500}
+  fold  9 test 2023-10-01:    25 trades, net     -2606.85, params {'kc_n': 20, 'atr_n': 10, 'kc_k': 2.5, 'adx_n': 14, 'adx_max': 20.0, 'stop_atr': 1.5, 'time_stop_bars': 24, 'warmup_bars': 500}
+  fold 10 test 2024-01-01:    36 trades, net     -3001.50, params {'kc_n': 20, 'atr_n': 10, 'kc_k': 2.5, 'adx_n': 14, 'adx_max': 20.0, 'stop_atr': 1.5, 'time_stop_bars': 24, 'warmup_bars': 500}
+  fold 11 test 2024-04-01:    43 trades, net     -2921.84, params {'kc_n': 20, 'atr_n': 10, 'kc_k': 2.5, 'adx_n': 14, 'adx_max': 20.0, 'stop_atr': 1.5, 'time_stop_bars': 24, 'warmup_bars': 500}
+  fold 12 test 2024-07-01:    25 trades, net     -1077.29, params {'kc_n': 20, 'atr_n': 10, 'kc_k': 2.5, 'adx_n': 14, 'adx_max': 20.0, 'stop_atr': 1.5, 'time_stop_bars': 24, 'warmup_bars': 500}
+  fold 13 test 2024-10-01:    45 trades, net     -2436.67, params {'kc_n': 20, 'atr_n': 10, 'kc_k': 2.5, 'adx_n': 14, 'adx_max': 20.0, 'stop_atr': 1.5, 'time_stop_bars': 24, 'warmup_bars': 500}
+  fold 14 test 2025-01-01:    45 trades, net     -1886.95, params {'kc_n': 20, 'atr_n': 10, 'kc_k': 2.5, 'adx_n': 14, 'adx_max': 20.0, 'stop_atr': 1.5, 'time_stop_bars': 24, 'warmup_bars': 500}
+  fold 15 test 2025-04-01:    49 trades, net      -979.57, params {'kc_n': 20, 'atr_n': 10, 'kc_k': 2.5, 'adx_n': 14, 'adx_max': 20.0, 'stop_atr': 1.5, 'time_stop_bars': 24, 'warmup_bars': 500}
+  fold 16 test 2025-07-01:    36 trades, net      -596.24, params {'kc_n': 20, 'atr_n': 10, 'kc_k': 2.5, 'adx_n': 14, 'adx_max': 20.0, 'stop_atr': 1.5, 'time_stop_bars': 24, 'warmup_bars': 500}
+
+OOS attribution (gross includes slippage; net = gross + fees + funding):
+  instrument      side       n      gross      fees      slip   funding        net  PF
+  BTC-USDT-SWAP   LONG      62      -4965     -2314      -712      -130      -7409  0.406
+  BTC-USDT-SWAP   SHORT     83      -6027     -3134      -934       -57      -9219  0.409
+  DOGE-USDT-SWAP  LONG      38      -4203      -860     -1035       -44      -5107  0.393
+  DOGE-USDT-SWAP  SHORT     46       4257     -1057      -823       -36       3165  1.603
+  ETH-USDT-SWAP   LONG      48      -1546     -1456      -332       -78      -3080  0.687
+  ETH-USDT-SWAP   SHORT     67      -2552     -1908      -558       -51      -4511  0.590
+  NEAR-USDT-SWAP  LONG      54      -3705      -863     -1314       -52      -4619  0.529
+  NEAR-USDT-SWAP  SHORT     77      -5078     -1416     -2017      -225      -6719  0.522
+  SAND-USDT-SWAP  LONG      56      -3118     -1115     -1085       -56      -4290  0.590
+  SAND-USDT-SWAP  SHORT     70       -917     -1233     -1206     -6327      -8477  0.358
+  SOL-USDT-SWAP   LONG      54       -543     -1186     -1150       -65      -1794  0.803
+  SOL-USDT-SWAP   SHORT     64      -2225     -1454     -1067       -93      -3772  0.666
+  UNI-USDT-SWAP   LONG      59      -5633     -1217     -1642       -79      -6929  0.475
+  UNI-USDT-SWAP   SHORT     84      -8890     -1991     -2358       -90     -10971  0.452
+  XRP-USDT-SWAP   LONG      41      -4254     -1177     -1298       -56      -5486  0.432
+  XRP-USDT-SWAP   SHORT     66      -6649     -1860     -1790       -96      -8605  0.417
+  ALL             BOTH     969     -56048    -24242    -19320     -7533     -87824  0.533
+  ALL             LONG     412     -27967    -10188     -8567      -560     -38714  0.533
+  ALL             SHORT    557     -28081    -14055    -10753     -6973     -49109  0.533
+  BTC+ETH only             260                                              -24218  0.505
+  funding cash flow -7533, of which funding-bound-v1 -7533: BTC -187, DOGE -80, ETH -129, NEAR -277, SAND -6383, SOL -157, UNI -169, XRP -152
+
+SURVIVORSHIP (V-14): the universe contains only instruments still listed in 2026; delisted perpetuals (e.g. LUNA, FTT) cannot be obtained from OKX. Results are biased UPWARD by an unknown amount, so a pass is weaker evidence than the gates imply. See the per-instrument breakdown and the BTC+ETH-only line.
+exit=0
