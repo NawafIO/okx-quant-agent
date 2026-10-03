@@ -23,9 +23,10 @@ from decimal import Decimal
 from typing import Annotated, Literal, Protocol
 from uuid import UUID
 
-from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, field_validator
+from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, field_validator, model_validator
 
 from okxq.errors import EnvironmentMismatchError
+from okxq.risk.policy import FROZEN_RISK_POLICY
 
 Env = Literal["DEMO", "PAPER", "LIVE"]
 
@@ -286,6 +287,34 @@ class TradeProposal(_Record):
         if v < 0:
             raise ValueError("quantities, notionals and leverage cannot be negative")
         return v
+
+    @model_validator(mode="after")
+    def _verdict_matches_checks(self) -> TradeProposal:
+        """The verdict cannot disagree with the checks (M5 checkpoint 1, B-3).
+
+        APPROVED requires exactly the pinned check set, every one passed, a positive size,
+        and risk and leverage within the pinned policy (imported, never restated). REJECTED
+        requires zero size and at least one failed check, so a rejection is explained.
+        """
+        p = FROZEN_RISK_POLICY
+        ids = [c.check_id for c in self.risk_checks]
+        if self.verdict == "APPROVED":
+            if len(ids) != len(set(ids)) or set(ids) != set(p.required_checks):
+                raise ValueError("APPROVED requires exactly the pinned risk-check set")
+            if not all(c.passed for c in self.risk_checks):
+                raise ValueError("APPROVED with a failed risk check")
+            if self.qty_base <= 0:
+                raise ValueError("APPROVED requires a positive quantity")
+            if self.risk_pct_of_equity > p.max_risk_per_trade:
+                raise ValueError("APPROVED risk exceeds the pinned per-trade limit")
+            if not Decimal(1) <= self.leverage <= p.max_leverage:
+                raise ValueError("APPROVED leverage outside [1, pinned cap]")
+        else:
+            if self.qty_base != 0 or self.notional_quote != 0 or self.risk_amount != 0:
+                raise ValueError("REJECTED requires zero quantity, notional and risk")
+            if all(c.passed for c in self.risk_checks):
+                raise ValueError("REJECTED requires at least one failed check")
+        return self
 
     def is_executable_at(self, now: datetime) -> bool:
         """Whether this proposal may be sent to the venue at ``now``.
