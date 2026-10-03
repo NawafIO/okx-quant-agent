@@ -1,0 +1,18 @@
+intraday_momentum feasibility, FEES-ONLY bound c=0.001; rationale 14d217cc8a62
+  instrument        days  k-days   E_u bp   E_k bp    p*_u    p*_k
+  BTC-USDT-SWAP     1918    1192     39.4     40.3   0.627   0.624
+  DOGE-USDT-SWAP    1907    1226     75.6     77.9   0.566   0.564
+  ETH-USDT-SWAP     1918    1210     53.9     56.6   0.593   0.588
+  NEAR-USDT-SWAP    1743    1196     85.5     87.8   0.558   0.557
+  SAND-USDT-SWAP    1641    1127     78.7     83.1   0.564   0.560
+  SOL-USDT-SWAP     1711    1130     79.4     82.3   0.563   0.561
+  UNI-USDT-SWAP     1838    1239     74.1     76.4   0.567   0.565
+  XRP-USDT-SWAP     1918    1266     62.5     62.2   0.580   0.580
+  median p*: M_u 0.5668  M_k 0.5648  min 0.5648  cutoff 0.55
+VERDICT: DISCARDED on feasibility (no trials)
+
+report-only - mean share of daily base volume by UTC hour:
+  00h 0.049  01h 0.043  02h 0.039  03h 0.036  04h 0.034  05h 0.034
+  06h 0.036  07h 0.039  08h 0.043  09h 0.040  10h 0.039  11h 0.039
+  12h 0.049  13h 0.056  14h 0.063  15h 0.059  16h 0.057  17h 0.044
+  18h 0.039  19h 0.035  20h 0.034  21h 0.028  22h 0.031  23h 0.034
