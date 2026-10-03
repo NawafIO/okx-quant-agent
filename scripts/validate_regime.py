@@ -17,6 +17,7 @@ import sys
 from collections import Counter
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
+from typing import Any
 
 from okxq.analysis.regime import FROZEN_REGIME, Regime, classify
 from okxq.analysis.ta import Bars
@@ -48,7 +49,7 @@ def days(a: str, b: str) -> list[date]:
     return [start + timedelta(n) for n in range((end - start).days + 1)]
 
 
-def evaluate(key: dict, by_day: dict[date, Regime]) -> tuple[bool, list[str]]:
+def evaluate(key: dict[str, Any], by_day: dict[date, Regime]) -> tuple[bool, list[str]]:
     lines, ok = [], True
     for w in key["trend_windows"]:
         span = days(w["from"], w["to"])
@@ -92,7 +93,8 @@ def evaluate(key: dict, by_day: dict[date, Regime]) -> tuple[bool, list[str]]:
         n_c = sum(1 for x in days(w["from"], w["to"]) if by_day.get(x) is Regime.CRISIS)
         ok &= n_c == 0
         lines.append(
-            f"[{'PASS' if n_c == 0 else 'FAIL'}] calm {w['from']}..{w['to']}: CRISIS on {n_c} days (0)"
+            f"[{'PASS' if n_c == 0 else 'FAIL'}] calm {w['from']}..{w['to']}: "
+            f"CRISIS on {n_c} days (0)"
         )
     for w in key["range_windows"]:
         span_d = days(w["from"], w["to"])
