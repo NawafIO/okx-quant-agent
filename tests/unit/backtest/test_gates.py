@@ -196,7 +196,9 @@ def test_g9_checks_the_oos_gate_under_stress() -> None:
 
 
 def hold(run: RunSummary, stressed: RunSummary, prov: str = "MEASURED") -> g.GateReport:
-    return g.evaluate_holdout(run, stressed, fee_provenance=prov, cost_config_sha="c" * 64)
+    return g.evaluate_holdout(
+        run, stressed, fee_provenance=prov, cost_config_sha="c" * 64, sizing_sha="s" * 64
+    )
 
 
 def test_holdout_evaluation() -> None:

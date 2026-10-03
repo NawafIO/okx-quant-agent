@@ -80,3 +80,32 @@ def test_no_public_function_accepts_replacement_thresholds(module: str) -> None:
             for p in params.values():
                 assert "FrozenGates" not in str(p.annotation), f"{module}.{name}: {p.name}"
                 assert p.name not in {"g", "gates", "thresholds"}, f"{module}.{name}: {p.name}"
+
+
+# --- research sizing (Chief Advisor, M4 checkpoint 1): sizing is a G-1 lever ---------------
+
+#: SHA-256 of ResearchSizing().canonical_json(), frozen before the first M4 run (2026-10-03).
+PINNED_SIZING_SHA256 = "e32046ed9bbc3b33e7a40d1ada9b0d6751d2b7b7ba132594f4f86e8f68908353"
+
+
+def test_research_sizing_matches_the_frozen_pin() -> None:
+    from okxq.backtest.sizing import PINNED_RESEARCH_SIZING_SHA256, RESEARCH_SIZING
+
+    assert RESEARCH_SIZING.sha256() == PINNED_SIZING_SHA256 == PINNED_RESEARCH_SIZING_SHA256
+    assert Decimal("0.005") == RESEARCH_SIZING.risk_fraction  # RC-05
+    assert Decimal(3) == RESEARCH_SIZING.leverage  # RC-12
+
+
+def test_research_sizing_refuses_other_values() -> None:
+    from okxq.backtest.sizing import ResearchSizing, SizingTamperError
+
+    with pytest.raises(SizingTamperError):
+        ResearchSizing(risk_fraction=Decimal("0.0025"))
+
+
+def test_research_protocol_does_not_accept_a_sizer() -> None:
+    import inspect
+
+    from okxq.backtest.walkforward import ResearchProtocol
+
+    assert "sizer" not in inspect.signature(ResearchProtocol.__init__).parameters

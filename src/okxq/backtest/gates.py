@@ -191,6 +191,8 @@ class GateInputs:
     #: Recorded on the report, so every verdict says what costs it was priced at.
     fee_provenance: str = ""
     cost_config_sha: str = ""
+    #: The pinned research sizing (sizing is a G-1 lever, so the report says which).
+    sizing_sha: str = ""
 
 
 @dataclass(frozen=True)
@@ -203,6 +205,7 @@ class GateReport:
     stressed: tuple[GateOutcome, ...] = field(default=())
     fee_provenance: str = ""
     cost_config_sha: str = ""
+    sizing_sha: str = ""
 
     def failed(self) -> list[str]:
         return [o.gate for o in self.outcomes if o.status is not Status.PASS]
@@ -433,6 +436,7 @@ def evaluate(inputs: GateInputs) -> GateReport:
         stressed=stressed,
         fee_provenance=inputs.fee_provenance,
         cost_config_sha=inputs.cost_config_sha,
+        sizing_sha=inputs.sizing_sha,
     )
 
 
@@ -450,6 +454,7 @@ def evaluate_holdout(
     *,
     fee_provenance: Provenance | str,
     cost_config_sha: str,
+    sizing_sha: str,
 ) -> GateReport:
     """The single holdout read. Must pass G-1, G-3 (a 10-trade "pass" means nothing), the OOS
     PF floor G-4 and concentration G-7, and still pass them under G-9 cost stress. If it
@@ -485,4 +490,5 @@ def evaluate_holdout(
         stressed=under_stress,
         fee_provenance=str(fee_provenance),
         cost_config_sha=cost_config_sha,
+        sizing_sha=sizing_sha,
     )
