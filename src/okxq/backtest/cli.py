@@ -36,6 +36,7 @@ from okxq.backtest.holdout import (
 )
 from okxq.backtest.reference_strategies import RandomEntry
 from okxq.backtest.sizing import ProvisionalFixedNotionalSizer
+from okxq.backtest.spread import abdi_ranaldo_spread
 from okxq.backtest.types import (
     BacktestConfigError,
     BarSeries,
@@ -243,6 +244,36 @@ def _research_window(
     return start, end, series, funding
 
 
+SPREAD_SNAPSHOT = Path(__file__).resolve().parents[3] / "docs" / "spreads_snapshot_2026-10-03.json"
+
+
+def _print_spread_comparison(series: dict[str, BarSeries], insts: Sequence[str]) -> None:
+    """Reporting only (closing-audit M-2): how heavy is the modelled spread? The Abdi-Ranaldo
+    half-spread the engine charges (median over the window, sampled daily on the same
+    168-bar lookback) next to the half-spread measured from live books on one day."""
+    lookback = costs.RESEARCH_SLIPPAGE.spread_lookback
+    snap: dict[str, float] = {}
+    if SPREAD_SNAPSHOT.exists():
+        raw = json.loads(SPREAD_SNAPSHOT.read_text(encoding="utf-8"))["instruments"]
+        snap = {k: float(v["spread_bps_median"]) / 2 for k, v in raw.items()}
+    print("\n   modelled vs measured HALF-spread (bps; reporting only, not a gate):")
+    for inst in insts:
+        s = series[inst]
+        hs = []
+        for i in range(lookback, len(s), 24):
+            rel = abdi_ranaldo_spread(
+                [float(x) for x in s.high[i - lookback : i]],
+                [float(x) for x in s.low[i - lookback : i]],
+                [float(x) for x in s.close[i - lookback : i]],
+            )
+            hs.append(rel / 2 * 1e4)
+        med = sorted(hs)[len(hs) // 2] if hs else float("nan")
+        live = snap.get(inst)
+        ratio = f"{med / live:7.0f}x" if live else "      -"
+        live_s = f"{live:7.3f}" if live is not None else "      -"
+        print(f"     {inst:<18} model median {med:7.2f}   live 2026-10-03 {live_s}   {ratio}")
+
+
 def cmd_sanity_random(args: argparse.Namespace) -> int:
     """Random entry must lose, by exactly the modelled costs (see okxq.backtest.sanity)."""
     store, _, _ = _store(args.env)
@@ -286,6 +317,8 @@ def cmd_sanity_random(args: argparse.Namespace) -> int:
     if not usable:
         print("no instrument has bars and covering funding over the window")
         return 4
+
+    _print_spread_comparison(series, usable)
 
     # Size ladder (check 6), at low fees and with the participation cap effectively OFF:
     # a binding cap fills every rung at the same quantity, so slippage cannot rise with

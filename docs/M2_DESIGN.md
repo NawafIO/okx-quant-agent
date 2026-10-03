@@ -1,6 +1,10 @@
 # M2 - Backtest Engine & Acceptance Gates: Design Record
 
-Status (2026-10-03, updated after the real-data runs): **M2 is NOT signed off.** Real data is
+Status (2026-10-03, after the Chief Advisor's closing audit): **M2 COMPLETE PENDING USER EVIDENCE - not
+signed off.** Waiting on the user for: measured perpetual-swap fee rates, and evidence that P-11 ran.
+M3 may begin under the advisor's conditions (§2f); M4 is blocked until both items land.
+
+Earlier status: Real data is
 backfilled and independently verified. On it, the D1 funding model FAILED validation and was replaced
 by an adverse bound (§2c). The cost model was recalibrated twice (§2d). The engine's stop path turned
 out to be optimistic and now carries a frozen overshoot term (§2e). Remaining blockers are in the
@@ -180,6 +184,43 @@ So, per the ruling:
 - Gap stops still fill at the real open.
 - The pre-cost overshoot is now gated at +0.5 bps alongside net.
 
+## 2f. Chief Advisor closing audit (checkpoint 3), 2026-10-03
+
+Verdict: **complete pending user evidence**, with three items of mine. All three are done:
+
+| # | Finding | Resolution |
+|---|---|---|
+| M-1 | The holdout (= promotion) run could be priced on assumed fees | **Fixed** (own commit): `evaluate_holdout` is INVALID unless fees are `MEASURED`; every `GateReport` records fee provenance and the cost-config sha. Gate pin 48908f93 → 9066dca9 |
+| M-2 | The spread estimator's weight was invisible | **Fixed**: `sanity-random` prints modelled vs measured half-spread per instrument. Finding below |
+| M-3 | P-11 is untested PowerShell and the task has never run | The checklist now asks the user to run `-RunNow` now, not wait for Sunday |
+| M-4 | Golden-digest moves were bundled into feature commits | Rule kept **from here on**: any further digest move gets its own commit with the stripped-label proof. The earlier moves were each proven to be label or schema only, in their commit messages |
+| M-5 | Mixed timeframes are refused | Added to open issues (13) |
+| M-6 | SAND short bound is 1%/8h from a single print | Stated below |
+
+**M-2 finding: the Abdi-Ranaldo estimator is on-off noise, heavy on average.** Daily samples over the
+3-year research window, 168-hour lookback:
+- Its **median is 0** on 13 of 15 instruments; negative means are clamped.
+- It reads positive 35–79% of the time, and then large: BTC mean 3.0 bps, p90 8.8 bps, against a live
+  half-spread of 0.006 bps (about 500×); HYPE 14.6 bps against 0.057.
+- It tracks volatility and return autocorrelation, not spread.
+
+So the cost model is **conservative on average and noisy**, but it does **not** track historical spread
+regimes as hoped. Consequences:
+- M4: a candidate that fails only on spread cost is flagged in the research log, not silently dropped.
+- M7: the PAPER reconciliation (§11.4, one-sided 1.5×) is expected to find the modelled spread far too
+  heavy. That is where it gets recalibrated, against real fills.
+
+**M-6:** SAND's 95-day history contains one -0.01 settlement, so `funding-bound-v1` charges SAND shorts 1%
+per 8h. SAND shorts are effectively untradable in research. That is honest, not a bug.
+
+**Sequencing ruling: M3 may begin** (pure TA, quant and regime engines; no strategy, no gate
+evaluation). Conditions:
+- M2 is recorded as complete pending user evidence, not signed off.
+- M3 does not touch `src/okxq/backtest/`.
+- M-1 lands first (done).
+- M4 stays blocked on both user items.
+- If the P-11 evidence shows the task did not run, fixing that comes before any further M3 work.
+
 ---
 
 ## 3. Assumptions recorded in every result
@@ -234,6 +275,9 @@ So, per the ruling:
 12. **The backfill's summary line is misleading.** It compares manifest rows (OHLCV + funding, closed
     months) with Parquet OHLCV rows (including the in-progress month). On 2026-10-03 that showed a
     "244-row" difference which reconciles exactly (7,183 − 6,939). Not a data defect.
+13. **One timeframe per engine run** (closing audit M-5). Mixed timeframes are refused, because bars closing
+    at the same T would open at different instants. A strategy wanting a 1d regime with 1h entries must
+    resample inside the strategy from its 1h view.
 
 ---
 
@@ -251,7 +295,7 @@ So, per the ruling:
 | **Random entry on REAL data has negative expectancy after costs** | **PASS** (2026-10-03, `logs/sanity_random_v3.log`). 15 instruments, 3y to the holdout, 20 seeds, 193,490 trades at $1k. Net −56.2 ± 0.7 bps (user fees) and −46.2 ± 0.7 (low sensitivity). All 30 instrument/side cells lose. Costs reconcile exactly. Impact rises 8.5→167 bps across $1k→$10M. 0 sizing refusals. 44 liquidity outcomes, all on 2022-12-18 (VENUE_FACTS §9). Reported, not gated: pre-cost −11.0 ± 0.7 |
 | **D1 funding model validated on the realised overlap** | **FAILED → re-scoped** per ruling (§2c): `funding-bound-v1` in use; model validation is forward-only on P-11 data |
 | **Martingale invariant (engine cannot be generous on a martingale)** | **PASS** with the k = 0.2 overshoot term, about 1M trades per configuration. 3% stop: net −10.27 ± 0.26, pre-cost −0.22 ± 0.26 bps. No stop: net −10.13 ± 0.29, pre-cost −0.04 ± 0.29. Independently PASS in CI run #21 |
-| **P-11 weekly archive verified to have run** | **USER**: the Windows task is installed; evidence it ran is still needed (`Get-ScheduledTaskInfo okxq-archive-funding` → LastTaskResult 0, plus new funding rows) |
+| **P-11 weekly archive verified to have run** | **USER**: pull, then in an ELEVATED PowerShell run `.\scripts\archive_funding.ps1 -Install` and `.\scripts\archive_funding.ps1 -RunNow` **now**; do not wait for Sunday. Report the `-Status` output: `result: 0 = success` plus a fresh `last success`. The task's 267011 / 1999 values mean "never run", not "failed". The hardened script (b8104c7) is untested PowerShell |
 | **Measured perpetual-swap fee rates** | **USER**: read the perp maker/taker from the OKX account fee page with a date (or from the demo key's trade-fee endpoint at M6). Required for M2 sign-off and for any promotion |
 | Chief Advisor checkpoint 3 on the built code | **Done**: 10 defects, all addressed (§2b). A final M2 audit is still due after the blocked items run on real data |
 
