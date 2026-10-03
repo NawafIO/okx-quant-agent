@@ -220,13 +220,21 @@ R-8 E4 found that crypto co-moves more under stress: in the worst month, the ful
 - **§20.1 deviation, recorded.** Kill-switch state lives in the audit chain plus a JSON cache, not SQLite. The audit chain is the stronger store: hash-chained and append-only.
 - **Portfolio Manager.** A data-only `StopMoved` event, so open risk stays correct once trailing stops arrive in M6.
 
-### Disagreement, recorded
+### Contract-unit sizing: conclusion kept, my reason WITHDRAWN
 
-**Contract-unit sizing.** The advisor asked for sizing in contracts via the contract value. M5 keeps **base units**:
-- M2 finding A-10 adopted base units because the contract value is unmeasured.
-- `lot_size_base` and `min_size_base` were measured in base units, so ROUND_FLOOR to the base lot is exact.
-- Sizing on an unmeasured contract value would be worse than sizing in base units.
-- The conversion to contracts belongs to **M6's adapter**. It must use ROUND_FLOOR and **REJECT any instrument whose contract value is unmeasured**, with an M6 acceptance test.
+I had argued "ctVal is unmeasured". **That was false.**
+- `docs/instrument_specs.raw.json` (9b7ed79) records `ctVal` for every instrument.
+- `lot_size_base = lotSz × ctVal` (`scripts/recon_instrument_specs.py:73`).
+- M2 finding A-10 was ruled before that measurement existed.
+
+The conclusion stands for the correct reason: flooring to `lot_size_base` is **identical** to flooring in contracts, so M5 sizes in base units.
+
+**The M6 adapter conversion must:**
+- use the same spec snapshot as `lot_size_base`;
+- REJECT unless `qty_base / ctVal` is an exact multiple of `lotSz`;
+- REJECT when the spec's `measured_utc` is older than a pinned age, since the venue can change `ctVal`.
+
+**Every proposal records the spec-snapshot hash.**
 
 ### Rulings recorded (§10)
 
@@ -234,3 +242,14 @@ R-8 E4 found that crypto co-moves more under stress: in the worst month, the ful
 - **Q2.** The CRISIS block is implemented as specified. It only reduces risk, rests on a label that failed validation (recorded), and does not spend the M3 tripwire.
 - **Q3.** The Portfolio Manager split is accepted, with `StopMoved` added.
 - **Q4.** The risk engine is not wired into research in M5. **Recorded for later:** before any holdout read, a candidate must be re-run under the risk-engine configuration (heat, cluster cap, max positions) as new trials. Otherwise the single holdout read tests a system that cannot be operated.
+
+## 12. Checkpoint 1 sign-off: BUILD, with these amendments
+
+1. **Contract units:** see above. The withdrawn reason is corrected; the M6 test is specified.
+2. **Halts also run on a timer.** A timer-driven `cycle.on_tick(now)` runs whether or not marks arrive. If no fresh mark arrives within the staleness budget, the kill switch engages (§19.3 trigger), so a dead feed cannot freeze the halt evaluation.
+3. **Truncation-proof kill switch.** A hash chain detects edits, not deletion of its latest records: cutting off an engage that followed a disarm leaves a valid chain ending in the disarm. The fix:
+   - the cache stores the chain's **last sequence number and hash**;
+   - the switch reads as engaged if the cache is missing, or if the chain is shorter than or different from the recorded tip;
+   - `disarm` refuses while the `KILL` sentinel exists.
+4. **More validation-skipping routes banned on contracts:** pydantic's deprecated `.copy(update=)` and `object.__setattr__`. The `TradeProposal` validator **imports** the pinned policy limits rather than repeating the numbers.
+5. **The coverage invocation is pinned.** A guard asserts that CI and `scripts/verify.ps1` run the risk tests with `--cov-config=.coveragerc-risk --cov-branch --cov-fail-under=100`.
