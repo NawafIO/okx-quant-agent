@@ -1,0 +1,32 @@
+{
+  "instrument": "BTC-USDT-SWAP",
+  "timeframe": "1d",
+  "written": "2026-10-03, after thresholds commit d50abc4, BEFORE any real-data run of the classifier",
+  "criteria": {
+    "trend_window": "expected label >= 60% of ALL window days (UNDEFINED counts against); opposite trend label <= 10%; HIGH_VOL + CRISIS <= 25%",
+    "crisis_event": "CRISIS fires on a day in [event, event + 2 days]; the actual day is reported; firing BEFORE the event is reported as a finding",
+    "crisis_rate": "CRISIS on <= 3% of all days 2020-01-01 .. 2025-09-30",
+    "calm_window": "CRISIS on 0 days",
+    "range_window": "RANGE >= 60% of ALL window days"
+  },
+  "trend_windows": [
+    {"label": "TREND_UP", "from": "2021-01-01", "to": "2021-04-13", "why": "2021 bull leg to the April ATH"},
+    {"label": "TREND_UP", "from": "2021-07-21", "to": "2021-11-09", "why": "second 2021 leg to the November ATH"},
+    {"label": "TREND_DOWN", "from": "2022-04-01", "to": "2022-06-30", "why": "2022 bear: LUNA, Celsius/3AC"},
+    {"label": "TREND_DOWN", "from": "2022-08-15", "to": "2022-12-31", "why": "2022 bear continuation into FTX"}
+  ],
+  "crisis_events": [
+    {"date": "2020-03-12", "why": "COVID crash"},
+    {"date": "2021-05-19", "why": "May 2021 crash"},
+    {"date": "2022-06-13", "why": "Celsius freeze / 3AC"},
+    {"date": "2022-11-08", "why": "FTX collapse (8-9 Nov)"}
+  ],
+  "calm_windows": [
+    {"from": "2020-07-01", "to": "2020-07-20", "why": "low-volatility consolidation near 9.2k"},
+    {"from": "2023-07-01", "to": "2023-08-15", "why": "low-volatility summer 2023 near 29-30k"}
+  ],
+  "range_windows": [
+    {"from": "2023-07-01", "to": "2023-08-15", "why": "sideways 29-31k"}
+  ],
+  "universe_crisis_rate_span": {"from": "2020-01-01", "to": "2025-09-30"}
+}
