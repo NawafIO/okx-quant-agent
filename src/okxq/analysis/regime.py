@@ -23,6 +23,12 @@ a daily window is too noisy to gate a label; the ATR percentile duplicates the r
 percentile; correlation collapse needs a universe-wide causal correlation feature that does
 not exist yet (quant.py is batch-only). Crisis is detected from price speed instead.
 
+**VALIDATION STATUS: FAILED** (docs/M3_DESIGN.md §2). These thresholds failed the
+pre-registered BTC key and the SOL/XRP CRISIS/HIGH_VOL transfer keys. Every label is
+DESCRIPTIVE. A strategy may consume a label only as a declared parameter set, subject to G-6
+perturbation, and must state the label's 2-4 week lag at turns. The one revision is unspent
+and the ETH key is still sealed.
+
 Live use must warm up with at least ``LIVE_MIN_HISTORY_DAYS`` of daily history: EMA-50 and
 ADX have infinite memory (TA registry ``min_warmup``), so a shorter buffer would label days
 differently from research.
