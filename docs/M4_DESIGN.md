@@ -10,7 +10,7 @@
 
 **Status as of 2026-10-03** (owner evidence on the PAPER audit chain):
 - **U-1: MEASURED.** Perpetual maker 0.02%, taker 0.05%, read from the owner's OKX account fee & tier page (Regular user) on 2026-10-03; record 1867e2a2c00c, superseding a5a9e9d2a94e, which had no source. Now `costs.FEES_MEASURED_PERP`. Adopting them in research is a Phase-2 cost-model change (§5): applied to every candidate, as new trials.
-- **U-2: accepted on substitute evidence.** `Get-ScheduledTaskInfo` showed result 0; last run 2026-10-03 18:09; next run 2026-10-04 03:00 (Sunday); 0 missed runs. The script's `-Status` output was not supplied. Record a93fc9ceea8a.
+- **U-2: ACCEPTED on the script's own evidence.** The task was re-registered from the current `archive_funding.ps1`. `-Status` shows: task Ready, S4U logon, wake on; last run 2026-10-03 21:59:55 local with result 0 = success; last success stamp 2026-10-03 19:01:50Z (0.0 days old); next run 2026-10-04 03:00. Record bab8cfe11f8f. It supersedes a93fc9ceea8a (substitute evidence from the 23796ff-era script).
 - **U-3: accepted** in the owner's words. Record 27d3491f0e89.
 
 **The expected outcome of M4 is that most or all candidates FAIL.** That is the gates working.

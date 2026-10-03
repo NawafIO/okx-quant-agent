@@ -403,6 +403,6 @@ Every finding is confirmed closed in code (2b62e25).
 - **Read CI after every push.** A local pass is not "green".
 - A Windows claim needs a Windows run.
 
-### Still open, owner side
+### Owner items: all closed
 
-- **U-2, P-11 evidence.** The scheduled task was registered while the Windows checkout was at 23796ff, so it predates the current `archive_funding.ps1` and the data code it calls (b8104c7). Re-register and re-check: `-Install`, then `-RunNow`, then `-Status`, in an elevated PowerShell.
+- **U-2, P-11 evidence: CLOSED.** The task was re-registered from the current script. `-Status`: result 0 = success, last success 2026-10-03 19:01:50Z, next run Sunday 03:00. Audit record bab8cfe11f8f.
