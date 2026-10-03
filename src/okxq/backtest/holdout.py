@@ -27,6 +27,7 @@ from decimal import Decimal
 import duckdb
 
 from okxq.audit.chain import AuditChain, read_chain
+from okxq.backtest import funding_bound
 from okxq.backtest.gates import FROZEN
 from okxq.backtest.types import BarSeries, FundingRate
 from okxq.data.okx_public import TIMEFRAME_MS
@@ -127,8 +128,16 @@ def load_research_funding(
     start_ms: int,
     end_ms: int,
 ) -> list[FundingRate]:
-    """Realised funding where it exists, else the D1 modelled series, flagged as modelled."""
+    """Realised funding where it exists, else a VALIDATED modelled series, else the adverse
+    ``funding-bound-v1`` (D1 ruling). Without a bound file, uncovered settlements stay
+    missing and the engine refuses the window (A-1)."""
     _check_sealed(end_ms)
+    return _merged_funding(store, inst_id, start_ms, end_ms)
+
+
+def _merged_funding(
+    store: ParquetStore, inst_id: str, start_ms: int, end_ms: int
+) -> list[FundingRate]:
     realised = _read_funding(store, REALISED_FUNDING, inst_id, start_ms, end_ms, False)
     have = {r.ts_ms for r in realised}
     modelled = [
@@ -136,7 +145,14 @@ def load_research_funding(
         for r in _read_funding(store, MODELLED_FUNDING, inst_id, start_ms, end_ms, True)
         if r.ts_ms not in have
     ]
-    return sorted(realised + modelled, key=lambda r: r.ts_ms)
+    have |= {r.ts_ms for r in modelled}
+    bound = funding_bound.load_bounds(funding_bound.BOUND_FILE).get(inst_id)
+    bounded = (
+        [r for r in funding_bound.bound_series(bound, start_ms, end_ms) if r.ts_ms not in have]
+        if bound is not None
+        else []
+    )
+    return sorted(realised + modelled + bounded, key=lambda r: r.ts_ms)
 
 
 # --- calibration door --------------------------------------------------------------------
@@ -221,11 +237,5 @@ def load_holdout_bars(
 def load_holdout_funding(
     key: HoldoutKey, store: ParquetStore, inst_id: str, end_ms: int
 ) -> list[FundingRate]:
-    realised = _read_funding(store, REALISED_FUNDING, inst_id, key.start_ms, end_ms, False)
-    have = {r.ts_ms for r in realised}
-    modelled = [
-        r
-        for r in _read_funding(store, MODELLED_FUNDING, inst_id, key.start_ms, end_ms, True)
-        if r.ts_ms not in have
-    ]
-    return sorted(realised + modelled, key=lambda r: r.ts_ms)
+    # Pre-2026-06-29 holdout settlements use the same bound as research (D1 ruling).
+    return _merged_funding(store, inst_id, key.start_ms, end_ms)

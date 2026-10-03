@@ -23,6 +23,7 @@ from pathlib import Path
 from statistics import mean
 
 from okxq.audit.chain import AuditChain
+from okxq.backtest import funding_bound
 from okxq.backtest import funding_model as fm
 from okxq.backtest.engine import BacktestEngine, EngineConfig
 from okxq.backtest.gates import FROZEN
@@ -117,6 +118,17 @@ def cmd_funding_validate(args: argparse.Namespace) -> int:
     }
     out = state_dir / "funding_validation.json"
     out.write_text(json.dumps(payload, indent=2, default=str), encoding="utf-8")
+    # Every look at the validation window is a D1 trial (Chief Advisor ruling 2026-10-03):
+    # the record is what stops a failed model from being quietly re-fitted until it passes.
+    chain.append(
+        "d1_validation",
+        {
+            "model": fm.MODEL_VERSION,
+            "verdict": str(report.verdict),
+            "passed": sorted(v.inst_id for v in report.instruments if v.passed),
+            "failed": sorted(v.inst_id for v in report.instruments if not v.passed),
+        },
+    )
     print(f"funding model {fm.MODEL_VERSION}: {report.verdict}   (report: {out})")
     for v in report.instruments:
         rel = "abs-floor" if v.rel_error is None else f"{v.rel_error:7.1%}"
@@ -134,6 +146,37 @@ def cmd_funding_validate(args: argparse.Namespace) -> int:
         print(f"  PARTIAL: only {sorted(report.validated)} may receive a modelled series")
         return 0
     return 0 if report.verdict is fm.FundingVerdict.PASS else 4
+
+
+def cmd_funding_bound(args: argparse.Namespace) -> int:
+    """Derive funding-bound-v1 from realised funding (calibration door, logged) and freeze
+    it in docs/funding_bound_v1.json for the research door to use."""
+    store, _, chain = _store(args.env)
+    now = int(datetime.now(tz=UTC).timestamp() * 1000)
+    base = store.root / "funding"
+    insts = sorted(p.name.removeprefix("inst_id=") for p in base.glob("inst_id=*"))
+    bounds = []
+    for inst in insts:
+        realised = load_calibration_funding(store, chain, inst, 0, now)
+        if len(realised) < 2:
+            print(f"  {inst}: too little realised funding - no bound, engine will refuse it")
+            continue
+        bounds.append(funding_bound.derive(inst, realised))
+    funding_bound.write_bounds(bounds)
+    chain.append(
+        "funding_bound_derived",
+        {
+            "version": funding_bound.BOUND_VERSION,
+            "instruments": {b.inst_id: [str(b.cost_long), str(b.cost_short)] for b in bounds},
+        },
+    )
+    print(f"{funding_bound.BOUND_VERSION}: {len(bounds)} instruments -> {funding_bound.BOUND_FILE}")
+    for b in bounds:
+        print(
+            f"  {b.inst_id:<18} {b.interval_ms // HOUR}h  long pays {b.cost_long:.8f}  "
+            f"short pays {b.cost_short:.8f}  (n={b.n_realised})"
+        )
+    return 0
 
 
 def cmd_funding_model(args: argparse.Namespace) -> int:
@@ -250,6 +293,7 @@ def main(argv: list[str] | None = None) -> int:
     for name, fn in (
         ("funding-validate", cmd_funding_validate),
         ("funding-model", cmd_funding_model),
+        ("funding-bound", cmd_funding_bound),
     ):
         p = sub.add_parser(name)
         p.add_argument("--env", required=True, choices=["DEMO", "PAPER", "LIVE"])

@@ -102,8 +102,10 @@ def test_funding_pipeline_end_to_end(env: tuple[ParquetStore, Path], tmp_path: P
     report = json.loads((state / "funding_validation.json").read_text(encoding="utf-8"))
     assert report["verdict"] == "PASS"
     assert report["instruments"][0]["interval_ms"] == 8 * H
-    # Every calibration read went through the logged door.
-    assert {r.kind for r in read_chain(state / "audit.jsonl")} == {"calibration_read"}
+    # Every calibration read went through the logged door, and the look itself is a D1 trial.
+    chain = read_chain(state / "audit.jsonl")
+    assert {r.kind for r in chain} == {"calibration_read", "d1_validation"}
+    assert [r.payload["verdict"] for r in chain if r.kind == "d1_validation"] == ["PASS"]
 
     assert cli.main(["funding-model", "--env", "PAPER"]) == 0
     research = load_research_funding(store, INST, utc(2025, 8, 10), utc(2025, 10))
@@ -147,3 +149,21 @@ def test_funding_pipeline_end_to_end(env: tuple[ParquetStore, Path], tmp_path: P
     )
     # Synthetic driftless walk + real costs: random entry must lose.
     assert code == 0
+
+
+def test_funding_bound_command_freezes_an_adverse_bound(
+    env: tuple[ParquetStore, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from okxq.backtest import funding_bound
+
+    store, state = env
+    populate(store)
+    monkeypatch.setattr(funding_bound, "BOUND_FILE", tmp_path / "bound.json")
+    assert cli.main(["funding-bound", "--env", "PAPER"]) == 0
+    b = funding_bound.load_bounds(tmp_path / "bound.json")[INST]
+    assert b.cost_long >= 0 and b.cost_short >= 0
+    assert b.interval_ms == 8 * H
+    assert "funding_bound_derived" in {r.kind for r in read_chain(state / "audit.jsonl")}
+    # The research door now has funding before the realised window, all of it bound.
+    research = load_research_funding(store, INST, utc(2025, 8, 10), utc(2025, 10))
+    assert research and all(r.is_bound for r in research)

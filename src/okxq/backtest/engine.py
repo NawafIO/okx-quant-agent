@@ -379,6 +379,10 @@ class BacktestEngine:
             "stress": f"fees={c.stress.fees} slippage={c.stress.slippage} "
             f"funding_paid={c.stress.funding_paid} funding_received={c.stress.funding_received}",
             "participation_cap": str(c.participation_cap),
+            "funding_bound": "funding-bound-v1 where no realised or validated modelled rate "
+            "exists: longs pay the 95-day max realised rate, shorts pay -min, never a receipt. "
+            "Derived from a 95-day low-funding regime; NOT a bound on 2020-2021 funding; "
+            "long-biased exposure in 2021 is under-costed by an unknown amount",
             "funding_boundary": "adverse: a settlement coinciding with an entry/exit is charged "
             "if it is a cost to either side of the boundary, credited only if a receipt to both",
             "funding_notional_price": "bar open at the settlement (last close inside a data gap); "
@@ -793,21 +797,27 @@ class BacktestEngine:
                 candidates, price = [before, after_open], s.open[i]
             else:
                 candidates, price = [after_open, at_close], s.open[i]
-            flows = [(self._funding_flow(c, price, rate.rate), c) for c in candidates]
+            flows = [(self._funding_flow(c, price, rate), c) for c in candidates]
             flow, snap = min(flows, key=lambda x: x[0])
             if snap.acc is None:
                 continue
             self._cash += flow
             snap.acc.funding += flow
             self._funding_events.append(
-                FundingEvent(rate.ts_ms, s.inst_id, rate.rate, rate.modelled, flow)
+                FundingEvent(rate.ts_ms, s.inst_id, rate.rate, rate.modelled, flow, rate.is_bound)
             )
 
-    def _funding_flow(self, snap: _Snap, price: Decimal, rate: Decimal) -> Decimal:
-        """Signed cash flow: longs pay a positive rate, shorts receive it. Stressed adversely."""
+    def _funding_flow(self, snap: _Snap, price: Decimal, rate: FundingRate) -> Decimal:
+        """Signed cash flow: longs pay a positive rate, shorts receive it. Stressed adversely.
+
+        A bound settlement is a cost to either side and never a receipt."""
         if snap.side is None:
             return ZERO
-        flow = -snap.side.sign * snap.qty * price * rate
+        if rate.is_bound:
+            cost = rate.bound_long if snap.side is Side.LONG else rate.bound_short
+            flow = -snap.qty * price * (cost or ZERO)
+        else:
+            flow = -snap.side.sign * snap.qty * price * rate.rate
         stress = self._cfg.stress
         return flow * (stress.funding_paid if flow < 0 else stress.funding_received)
 

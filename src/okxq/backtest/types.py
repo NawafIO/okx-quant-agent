@@ -104,11 +104,22 @@ G9_STRESS = CostStress(
 @dataclass(frozen=True)
 class FundingRate:
     """One funding settlement. ``modelled`` marks a reconstruction rather than a realised
-    venue rate, so results can report how much of their funding was modelled."""
+    venue rate, so results can report how much of their funding was modelled.
+
+    A BOUND settlement (``funding-bound-v1``, Chief Advisor D1 ruling 2026-10-03) carries no
+    rate a position could receive: it charges a long ``bound_long`` and a short
+    ``bound_short``, both as costs, so there is never a receipt to stress or to flatter.
+    """
 
     ts_ms: int
     rate: Decimal
     modelled: bool = False
+    bound_long: Decimal | None = None
+    bound_short: Decimal | None = None
+
+    @property
+    def is_bound(self) -> bool:
+        return self.bound_long is not None
 
 
 @dataclass(frozen=True)
@@ -186,6 +197,8 @@ class FundingEvent:
     modelled: bool
     #: Signed cash flow to the account after stress (negative = paid).
     cash_flow: Decimal
+    #: Charged from the adverse funding bound rather than a realised or modelled rate.
+    bound: bool = False
 
 
 @dataclass(frozen=True)

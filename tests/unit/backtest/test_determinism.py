@@ -114,7 +114,9 @@ def test_nothing_decided_before_the_cut_depends_on_data_after_it() -> None:
 
 #: Golden fixture. If this changes, engine SEMANTICS changed: review the diff of
 #: ``canonical_json()`` deliberately, record why in the commit, then update the digest.
-GOLDEN_DIGEST = "dece7ca1dee4e92535084fb08f573954e670ac7d67a4089c7aaeb02aa5b37396"
+#: History: dece7ca1... -> 4b1f375c... (funding-bound-v1 added a ``bound`` flag to funding
+#: events and an assumption entry; with both stripped the output hashes to dece7ca1 exactly).
+GOLDEN_DIGEST = "4b1f375cbfb064eee6e3f6782be9e2e768c7a1deb52a25cfbd86850c75bc0819"
 
 
 def test_golden_fixture() -> None:
