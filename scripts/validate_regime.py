@@ -2,6 +2,7 @@
 
     python scripts/validate_regime.py                 # BTC key
     python scripts/validate_regime.py --open-sealed   # ETH key, only after BTC is scored
+    python scripts/validate_regime.py --risk SOL      # CRISIS/HIGH_VOL-only keys (SOL, XRP)
 
 Order fixed by the Chief Advisor (M3 checkpoint 1): thresholds committed (d50abc4), then
 these keys committed, then this first run. Each key file is verified against the SHA-256
@@ -36,6 +37,15 @@ KEYS = {
     "ETH": (
         ROOT / "docs/regime/key_eth_SEALED.json",
         "ce67696ee0ec87887b841d7bfd1da0e8891ec06c66f3bce998a5b4c54108f0dc",
+    ),
+    # Risk-only keys (Chief Advisor ruling after the BTC FAIL): CRISIS/HIGH_VOL transfer only.
+    "SOL": (
+        ROOT / "docs/regime/key_sol_risk.json",
+        "98a80eb80b9747d2c1c1648e045933e96850327d67ae8e983c332537cd58a047",
+    ),
+    "XRP": (
+        ROOT / "docs/regime/key_xrp_risk.json",
+        "e660c8632c3b5fc1f1bbb449ccc44e68e18bbc73ea2ff76d3809e79afc883b28",
     ),
 }
 
@@ -108,11 +118,63 @@ def evaluate(key: dict[str, Any], by_day: dict[date, Regime]) -> tuple[bool, lis
     return ok, lines
 
 
+def evaluate_risk(key: dict[str, Any], by_day: dict[date, Regime]) -> tuple[bool, list[str]]:
+    """CRISIS/HIGH_VOL only. Kept apart from :func:`evaluate` so the sealed ETH key is scored
+    by exactly the code that existed when it was sealed."""
+    lines, ok = [], True
+    first = min(by_day)
+    avail = [e for e in key["crisis_events"] if d(e["date"]) >= first + timedelta(5)]
+    hit: list[str] = []
+    miss: list[str] = []
+    for e in avail:
+        ev = d(e["date"])
+        fired = [
+            x
+            for x in days(e["date"], (ev + timedelta(2)).isoformat())
+            if by_day.get(x) is Regime.CRISIS
+        ]
+        (hit if fired else miss).append(e["date"])
+    na = len(key["crisis_events"]) - len(avail)
+    share = len(hit) / len(avail) if avail else 0.0
+    good = bool(avail) and share >= 0.80
+    ok &= good
+    lines.append(
+        f"[{'PASS' if good else 'FAIL'}] CRISIS on BTC-rule events: {len(hit)}/{len(avail)} "
+        f"({share:.0%}, >=80%); {na} N/A before data; missed: {miss or 'none'}"
+    )
+    span = key["universe_crisis_rate_span"]
+    allc = [by_day[x] for x in by_day if d(span["from"]) <= x <= d(span["to"])]
+    rate = sum(1 for x in allc if x is Regime.CRISIS) / len(allc)
+    ok &= rate <= 0.03
+    lines.append(
+        f"[{'PASS' if rate <= 0.03 else 'FAIL'}] CRISIS rate {rate:.2%} of {len(allc)} days (<=3%)"
+    )
+    for w in key["calm_windows"]:
+        n_c = sum(1 for x in days(w["from"], w["to"]) if by_day.get(x) is Regime.CRISIS)
+        ok &= n_c == 0
+        lines.append(
+            f"[{'PASS' if n_c == 0 else 'FAIL'}] calm {w['from']}..{w['to']}: "
+            f"CRISIS on {n_c} days (0)"
+        )
+    for w in key["high_vol_windows"]:
+        c = Counter(by_day.get(x, Regime.UNDEFINED) for x in days(w["from"], w["to"]))
+        rest = sum(c.values()) - c[Regime.CRISIS]
+        hv = c[Regime.HIGH_VOL] / rest if rest else 0.0
+        good = rest > 0 and hv >= 0.50
+        ok &= good
+        lines.append(
+            f"[{'PASS' if good else 'FAIL'}] HIGH_VOL {w['from']}..{w['to']}: {hv:.0%} of "
+            f"{rest} non-CRISIS days (>=50%); {dict(c)}"
+        )
+    return ok, lines
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--open-sealed", action="store_true")
+    ap.add_argument("--risk", choices=["SOL", "XRP"])
     a = ap.parse_args()
-    which = "ETH" if a.open_sealed else "BTC"
+    which = a.risk or ("ETH" if a.open_sealed else "BTC")
     path, pinned = KEYS[which]
     actual = hashlib.sha256(path.read_bytes()).hexdigest()
     if actual != pinned:
@@ -142,7 +204,8 @@ def main() -> int:
         datetime.fromtimestamp(t / 1000, tz=UTC).date(): lab
         for t, lab in zip(s.ts_open_ms, labels, strict=True)
     }
-    ok, lines = evaluate(key, by_day)
+    risk = key.get("kind") == "risk_only"
+    ok, lines = evaluate_risk(key, by_day) if risk else evaluate(key, by_day)
     print(
         f"{key['instrument']} 1d, {len(labels)} days {min(by_day)}..{max(by_day)}; "
         f"thresholds {FROZEN_REGIME.sha256()[:12]}; key {actual[:12]}"
@@ -155,6 +218,7 @@ def main() -> int:
         "regime_validation",
         {
             "instrument": key["instrument"],
+            "kind": "risk_only" if risk else "full",
             "key_sha256": actual,
             "thresholds_sha256": FROZEN_REGIME.sha256(),
             "passed": ok,

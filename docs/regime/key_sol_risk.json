@@ -1,0 +1,87 @@
+{
+  "kind": "risk_only",
+  "timeframe": "1d",
+  "written": "2026-10-03, after the BTC FAIL (12befe9) and Chief Advisor ruling B; BEFORE any classifier run on this instrument. Thresholds 260beabd (unrevised).",
+  "tests": "TRANSFER of the frozen CRISIS/HIGH_VOL thresholds through this instrument's own returns and 365d vol percentile. NOT independence: alt crashes co-move with BTC's.",
+  "criteria": {
+    "crisis_event": "CRISIS fires on a day in [event, event + 2 days]; events before the instrument's first bar + 5 days are N/A, not counted; PASS if hits >= 80% of available events; every miss is listed",
+    "crisis_rate": "CRISIS on <= 3% of the instrument's days in 2020-01-01 .. 2025-09-30",
+    "calm_window": "CRISIS on 0 days",
+    "high_vol_window": "HIGH_VOL on >= 50% of the window's non-CRISIS days"
+  },
+  "crisis_events_rule": "every BTC-USDT-SWAP 1d close-to-close return <= -10% in 2020-01-01 .. 2025-09-30, days within 3 of the previous event merged into it (generated mechanically from BTC bars; the rule is applied to BTC, not to this instrument, which would be tautological with the CRISIS rule)",
+  "crisis_events": [
+    {
+      "date": "2020-03-12",
+      "why": "BTC <= -10% day (rule)"
+    },
+    {
+      "date": "2020-09-03",
+      "why": "BTC <= -10% day (rule)"
+    },
+    {
+      "date": "2021-01-21",
+      "why": "BTC <= -10% day (rule)"
+    },
+    {
+      "date": "2021-05-12",
+      "why": "BTC <= -10% day (rule)"
+    },
+    {
+      "date": "2021-05-19",
+      "why": "BTC <= -10% day (rule)"
+    },
+    {
+      "date": "2021-06-21",
+      "why": "BTC <= -10% day (rule)"
+    },
+    {
+      "date": "2021-09-07",
+      "why": "BTC <= -10% day (rule)"
+    },
+    {
+      "date": "2022-01-21",
+      "why": "BTC <= -10% day (rule)"
+    },
+    {
+      "date": "2022-05-09",
+      "why": "BTC <= -10% day (rule)"
+    },
+    {
+      "date": "2022-06-13",
+      "why": "BTC <= -10% day (rule)"
+    },
+    {
+      "date": "2022-08-19",
+      "why": "BTC <= -10% day (rule)"
+    },
+    {
+      "date": "2022-11-09",
+      "why": "BTC <= -10% day (rule)"
+    }
+  ],
+  "universe_crisis_rate_span": {
+    "from": "2020-01-01",
+    "to": "2025-09-30"
+  },
+  "instrument": "SOL-USDT-SWAP",
+  "calm_windows": [
+    {
+      "from": "2023-05-01",
+      "to": "2023-05-31",
+      "why": "SOL quiet near 20-23"
+    },
+    {
+      "from": "2023-09-01",
+      "to": "2023-09-30",
+      "why": "SOL quiet near 19-21"
+    }
+  ],
+  "high_vol_windows": [
+    {
+      "from": "2022-11-10",
+      "to": "2022-11-30",
+      "why": "FTX/Alameda: SOL-specific collapse, roughly -60%"
+    }
+  ]
+}
