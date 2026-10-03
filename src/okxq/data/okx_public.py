@@ -101,7 +101,13 @@ class OkxPublic:
 
     def __init__(self, *, max_retries: int = 5) -> None:
         # No apiKey/secret/password is passed. There is nothing to authenticate with.
-        self._ex = ccxt.okx({"enableRateLimit": True})
+        #
+        # requests_trust_env: ccxt defaults it to False, which makes `requests` ignore the
+        # standard HTTPS_PROXY / REQUESTS_CA_BUNDLE environment. Behind a TLS-inspecting
+        # proxy that fails certificate verification (measured 2026-10-03 in the cloud host).
+        # Honouring the environment keeps verification ON with the configured CA bundle -
+        # verification is never disabled. With no such variables set, behaviour is unchanged.
+        self._ex = ccxt.okx({"enableRateLimit": True, "requests_trust_env": True})
         self._max_retries = max_retries
         self._request_count = 0
 

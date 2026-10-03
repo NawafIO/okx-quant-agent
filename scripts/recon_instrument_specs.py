@@ -46,7 +46,7 @@ def main() -> int:
     if not wanted:
         print("no stored instruments found - run the M1 backfill first")
         return 4
-    ex = ccxt.okx({"enableRateLimit": True})
+    ex = ccxt.okx({"enableRateLimit": True, "requests_trust_env": True})
     raw_instruments = ex.publicGetPublicInstruments({"instType": "SWAP"})
     by_id = {row["instId"]: row for row in raw_instruments["data"]}
     raw_tiers: dict[str, object] = {}
