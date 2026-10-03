@@ -1,6 +1,6 @@
 # M5 design: Risk Engine + Portfolio Manager + Kill Switch (PLAN, for Chief Advisor review)
 
-Status: **BUILT; closing audit FIX THEN CLOSE → all fixes applied (§14).** Pending: the owner runs `scripts/verify.ps1` on Windows (finding #7). Scope: roadmap M5, architecture §13, §14 and §19.3. Pure, offline, no network, no credentials. Phase stays 2; no LIVE path is touched.
+Status: **CLOSED by the Chief Advisor (CLOSE, §15)**, with one owner item open: run `scripts/verify.ps1` on Windows before M5 is recorded as "full green" (finding #7: closed in code, not yet evidenced). Scope: roadmap M5, architecture §13, §14 and §19.3. Pure, offline, no network, no credentials. Phase stays 2; no LIVE path is touched.
 
 ## 0. Constraints carried in
 
@@ -345,3 +345,25 @@ The engine core was confirmed sound: no path returns APPROVED with a failed, mis
 - **The operator CLI that calls `disarm` does not exist yet.** When it is built (M6/M8), the guard must allow-list exactly that module.
 - **`engaged()` re-verifies the whole audit chain on every call.** If proposals share that file, reads get slower as it grows. M6 should give the kill switch and proposals separate chains, or verify incrementally.
 - **SZ-4 `qty >= (lot or ZERO) > 0`** was confirmed correct by the advisor.
+
+## 15. Closing-audit confirmation: VERDICT CLOSE
+
+Every finding is confirmed closed in code (2b62e25).
+
+- **Note on #1, fixed now rather than carried over.** `decide` previously did not turn a seen `KILL` sentinel into a durable ENGAGE; only `on_tick` did. A sentinel created and deleted between ticks would have blocked entries only while it existed. `decide` now does the same as `on_tick` (`_halts_and_sentinel`), and a test covers it.
+- **Accepted residual (#2).** If BOTH the portfolio database and the audit log are lost, empty-equals-empty reconciles, and a fresh `Init` would reset the baselines. That reset still requires an **audited manual disarm first**: a missing chain reads ENGAGED, so no entry is possible until a human disarms on the record. Accepted as the boundary of an unsigned local store, consistent with the kill-switch threat model.
+- **Owner item:** run `scripts/verify.ps1` on Windows. Finding #7 is closed in code but not yet evidenced on Windows.
+
+### M6 carry-overs (consolidated)
+
+- **Signing and re-validation:**
+  - HMAC signing of proposals.
+  - The execution entry re-validates with `TradeProposal.model_validate(p.model_dump())`, verifies the HMAC and re-checks the kill switch independently.
+- **Guard allow-lists:**
+  - The operator disarm CLI needs an **explicit allow-list entry** in the `disarm` guard.
+  - The M6 composition root that constructs `PortfolioStore` needs an **explicit allow-list entry** in the ingest guard. It is not an exception carved into the rule.
+- **Order-path actions:** the kill switch's cancel and flatten actions (`KillActions`); scale-outs, trailing stops, breakeven and time exits; venue reconciliation.
+- **Measurements to re-pin:** `max_size_base`, and the bar-publication delay, which sets `staleness_grace_s` and `mark_stale_s`.
+- **Contract units:** the conversion test (§11), which uses the spec snapshot and the `measured_utc` age.
+- **Audit-chain performance:** separate the kill switch's chain from the proposal chain, or verify it incrementally.
+- **Research before any holdout:** re-run a candidate under the risk-engine configuration (Q4).

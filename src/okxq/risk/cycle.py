@@ -9,8 +9,9 @@
   held mark older than the PINNED ``mark_stale_s`` (a dead feed, §19.3).
 * A halt LATCHES: it writes an ENGAGE unless the chain's latest switch record already is one
   - never skipped merely because the switch happens to read engaged (sentinel, unreadable
-  cache). ``on_tick`` also turns a seen ``KILL`` sentinel into a durable ENGAGE, so deleting
-  the file never disarms (closing audit #1). Only an audited manual disarm releases.
+  cache). ``on_tick`` and ``decide`` both turn a seen ``KILL`` sentinel into a durable
+  ENGAGE, so deleting the file never disarms (closing audit #1 and its confirmation
+  note). Only an audited manual disarm releases.
 * If the ENGAGE cannot be written the error propagates and the caller's process must stop.
 * ``decide`` reads the switch FRESH, evaluates, audits the proposal, returns a ``Decision``.
 """
@@ -100,11 +101,15 @@ def ingest(store: Store, event: Event, now_ms: int, switch: Switch) -> Portfolio
     return new
 
 
-def on_tick(state: PortfolioState, now_ms: int, switch: Switch) -> None:
+def _halts_and_sentinel(state: PortfolioState, now_ms: int, switch: Switch) -> tuple[Halt, ...]:
     halts = halt_triggers(state, now_ms, FROZEN_RISK_POLICY)
     if switch.sentinel_present():
         halts = (*halts, Halt("KILL sentinel", None, None))
-    _latch(halts, switch)
+    return halts
+
+
+def on_tick(state: PortfolioState, now_ms: int, switch: Switch) -> None:
+    _latch(_halts_and_sentinel(state, now_ms, switch), switch)
 
 
 def snapshot(
@@ -145,7 +150,7 @@ def decide(
     signals_this_bar: tuple[str, ...],
     api_error_breach: bool | None,
 ) -> Decision:
-    halts = halt_triggers(state, now_ms, FROZEN_RISK_POLICY)
+    halts = _halts_and_sentinel(state, now_ms, switch)
     _latch(halts, switch)
     snap = snapshot(state, now_ms, switch, signals_this_bar, api_error_breach)
     proposal = evaluate(signal, snap, facts, qual)

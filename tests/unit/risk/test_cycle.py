@@ -200,3 +200,22 @@ def test_the_protocol_stubs_are_inert() -> None:
     assert cycle.Switch.engage(Switch(), "t", {}) is None
     assert cycle.Audit.append(Audit(), "k", {}) is None
     assert cycle.Store.append(Store(None), Init(0, D(1))) is None
+
+
+def test_decide_also_turns_a_seen_sentinel_into_a_durable_engage() -> None:
+    """Confirmation note on #1: a sentinel seen by decide (not only on_tick) latches."""
+    sw = Switch()
+    sw.sentinel = True
+    d = decide(
+        signal(),
+        initial("PAPER", Init(T_MS - 100, D(10_000))),
+        facts(),
+        qual(),
+        T_MS,
+        sw,
+        Audit(),
+        (),
+        False,
+    )
+    assert sw.durable is True and sw.triggers == ["KILL sentinel"]
+    assert d.proposal.verdict == "REJECTED"
