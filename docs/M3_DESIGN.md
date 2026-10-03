@@ -1,13 +1,13 @@
 # M3 design record — analysis engines
 
-Status: **work complete; the regime classifier FAILED validation, and its labels are DESCRIPTIVE.** Awaiting the M3 closing Chief Advisor audit.
+Status: **CLOSED** by the Chief Advisor closing audit, with the corrections below applied. The regime classifier FAILED validation and its labels are DESCRIPTIVE. The threshold revision is UNSPENT and the ETH key is SEALED.
 Scope: `src/okxq/analysis/` (ta.py, quant.py, regime.py) and the validation scripts. `src/okxq/backtest/` is untouched (a closing-audit condition of M2).
 
 ## 1. What was built
 
 | Engine | File | Checks |
 |---|---|---|
-| TA | `analysis/ta.py` | `REGISTRY`: 26 indicators. Each is a pure function of closed bars and declares its `min_warmup`. Every registry entry gets the T-1 property test (`f(x[:n])[-1] == f(x)[n-1]`). An indicator that fails is removed, not patched: OBV failed its warm-up and was removed. TA-Lib unstable periods are pinned to 0 and asserted at import. |
+| TA | `analysis/ta.py` | `REGISTRY`: 26 indicators. Each is a pure function of closed bars and declares its `min_warmup`. Every registry entry gets the T-1 property test (`f(x[:n])[-1] == f(x)[n-1]`). An indicator that fails is removed, not patched. OBV passes T-1, because a cumulative sum is consistent with its own prefix. It FAILED the bounded-buffer / `min_warmup` property: its level depends on where the series starts, so a finite live buffer never agrees with the full history. It was removed. TA-Lib unstable periods are pinned to 0 and asserted at import. |
 | Quant | `analysis/quant.py` | Every function is `KIND = "batch"`: it describes a caller-supplied sample and is not a per-bar causal feature. Correlations use pairwise-complete timestamps and never fill gaps. Average-linkage clustering is implemented in numpy because scipy is not installed. |
 | Regime | `analysis/regime.py` | Thresholds are frozen with a pin (`260beabd…`) **before** any real-data run. Undefined inputs give `UNDEFINED`. `align_to_hourly` applies a daily label only from that day's close onward. `classify_with` exists for sensitivity analysis only, and the isolation guard keeps it away from research code. |
 
@@ -36,9 +36,11 @@ All of these run through the research door (holdout sealed), and each is recorde
 
 1. **Trend labels lag.** They confirm 2–4 weeks after a turn and decay about 4 weeks after a trend ends. In July 2023, ADX took from 07-01 to 07-29 to fall from 34 to 20. The 2021-07-21 window begins at the low and carries 8 TREND_DOWN days. A strategy that enters on a fresh TREND label enters late by construction.
 2. **The TREND/RANGE boundary is fragile.** A ±20% move in `adx_trend` relabels 12–15% of days on BTC, SOL and XRP (§4). The BTC failures pull the ADX threshold in opposite directions, so no threshold-only revision could pass without being fitted to the key.
-3. **The absolute CRISIS thresholds do not transfer across volatility levels.** −10% in one day and −20% over five days fire on 0.95% of BTC days, but 3.4% of XRP days and 4.0% of SOL days. The relative HIGH_VOL percentile passed its positive window on both SOL (88%) and XRP (92%). [Likely] A method-level revision would scale the crisis cut to each instrument's own volatility. **That is a hypothesis for the unspent revision, not a change made here.**
+3. **[Likely, not demonstrated] The absolute CRISIS thresholds do not transfer across volatility levels.** −10% in one day and −20% over five days fire on 0.95% of BTC days, but 3.4% of XRP days and 4.0% of SOL days. The relative HIGH_VOL percentile passed its positive window on both SOL (88%) and XRP (92%). The ≤3% rate criterion was anchored on BTC's 0.95% base rate, and the failures are marginal (3.4%, 4.0%). So this is a plausible reading, not a demonstrated mechanism. The hypothesis for the unspent revision is a crisis cut scaled to each instrument's own volatility. **It is written down here, before any consumer exists, so that it cannot be "discovered" later.**
+
+**Revision tripwire** (closing audit): the sealed ETH key may be spent only when an M4 strategy declares a regime dependency in its written rationale BEFORE that strategy's first backtest. The revision is then made and scored against the ETH key before the strategy runs. No consumer, no revision.
 4. **One-day CRISIS blips on BTC:** 2021-09-07, 2022-05-09 and 2022-08-19, plus 2021-05-12, which came before the 05-19 event. All four are BTC days at or below −10%, so they are real crash days. The original BTC event list was written from memory and was incomplete. Later keys generate their events by a rule applied to BTC, never to the instrument under test, because that would be tautological with the CRISIS rule itself.
-5. **SOL's misses:** CRISIS did not fire on 2021-05-12 or 2021-09-07, two of the BTC crash days. On those days SOL decoupled from BTC.
+5. **SOL's misses were measured decoupling.** On 2021-05-12 SOL closed −2.2% (5-day +0.9%) while BTC fell −12.5%. On 2021-09-07 SOL closed +5.7% (5-day +35.2%, its 2021 rally) while BTC fell −11.0%. The nearest SOL move was 2021-05-13: 5-day −10.2%, still short of the −20% cut.
 
 ## 3. R-8 clustering demonstration (finding M-5)
 
@@ -81,13 +83,25 @@ Output: `scripts/regime_sensitivity.py`. Each threshold is moved by −20% and +
 |---|---|---|---|
 | 8.3 | Regime labels authoritative | Labels descriptive | Pre-registered validation failed (§2) |
 | 8.3 | Hurst, ATR percentile and correlation-collapse crisis inputs | Not used | Daily Hurst is too noisy to gate on. The ATR percentile duplicates the realised-volatility percentile. Correlation collapse needs a causal universe-wide feature, and quant.py is batch-only. |
-| 9.1 | Swing highs/lows, pivots | Excluded | They need right-side bars, which is look-ahead by definition |
-| 9.1 | CVD | Excluded | No trade-side data |
-| 9.1 | Volume profile | Deferred | No consumer yet |
-| 9.1 | OBV | Removed | Failed the T-1 warm-up property |
-| 9.2 | Rolling or causal quant features | Batch only (`KIND`) | A causal form needs its own T-1 test before any strategy may consume it |
+| 9.2 | Swing highs/lows, pivots | Excluded | They need right-side bars, which is look-ahead by definition |
+| 9.2 | CVD | Excluded | No trade-side data |
+| 9.2 | Volume profile | Deferred | No consumer yet |
+| 9.2 | OBV | Removed | Failed the bounded-buffer / `min_warmup` property (it passes T-1); see §1 |
+| 9.1 | Rolling or causal quant features | Batch only (`KIND`) | A causal form needs its own T-1 test before any strategy may consume it |
 
-## 6. What M3 does not settle
+## 6. T-2: own implementations against independent references
+
+| Indicator | Reference | Tolerance met |
+|---|---|---|
+| Rolling VWAP | Naive per-window loop (`test_rolling_vwap_matches_a_naive_loop`) | rel 1e-9 |
+| Keltner | Pure-Python EMA (SMA-seeded) and Wilder ATR (mean of TR[1..n], then smoothed), written without TA-Lib. 3 seeds, 300 bars. | rel 1e-9 |
+| Supertrend | Pure-Python final-band formulation with its own ATR, written without TA-Lib. 5 seeds, at least 3 direction flips each. | line rel 1e-9; direction exact |
+
+Before the closing audit, Keltner was checked only as an identity over TA-Lib's own EMA and ATR, and Supertrend only by its direction of flip. Neither was an independent reference. Both were added at closing. A mutation check showed the new tests catch a wrong ATR period in Keltner and a perturbed low in Supertrend. **Caveat:** the Supertrend reference and implementation share one author and one convention (start in an up-trend; flip on a strict cross), so a misconception common to both would not be caught. Agreement with a third-party chart is not tested.
+
+TA-Lib wrappers are checked against hand-computed fixtures (SMA, EMA, RSI).
+
+## 7. What M3 does not settle
 
 - Whether a volatility-scaled crisis rule (§2, fact 3) would pass. That would spend the one revision, and the sealed ETH key would decide.
 - Whether any regime label adds value to a strategy. That is an M4 question, tested as declared parameters under G-6, never assumed.

@@ -169,3 +169,81 @@ def test_supertrend_flips_with_the_trend() -> None:
     line, d = ta.supertrend(b, 10, 3.0)
     assert d[50] == 1.0 and line[50] < c[50]  # rising: line below price
     assert d[115] == -1.0 and line[115] > c[115]  # falling: line above price
+
+
+# --- T-2: own implementations vs INDEPENDENT pure-Python references (M3 closing audit) -----
+# The references below re-derive EMA, Wilder ATR, Keltner and Supertrend from their textbook
+# definitions without TA-Lib, so a Keltner or Supertrend bug cannot hide behind the library.
+
+
+def _ohlc(seed: int, n: int = 300) -> Bars:
+    rng = np.random.default_rng(seed)
+    c = 100 * np.exp(np.cumsum(rng.normal(0, 0.02, n)))
+    o = np.concatenate([[c[0]], c[:-1]])
+    h = np.maximum(o, c) * (1 + rng.uniform(0, 0.01, n))
+    lo = np.minimum(o, c) * (1 - rng.uniform(0, 0.01, n))
+    return Bars.of(o, h, lo, c, rng.uniform(1, 10, n))
+
+
+def _ref_ema(x: list[float], n: int) -> list[float]:
+    """Seeded with the simple mean of the first n values (TA-Lib's convention)."""
+    out = [math.nan] * len(x)
+    out[n - 1] = sum(x[:n]) / n
+    a = 2 / (n + 1)
+    for i in range(n, len(x)):
+        out[i] = a * x[i] + (1 - a) * out[i - 1]
+    return out
+
+
+def _ref_atr(h: list[float], lo: list[float], c: list[float], n: int) -> list[float]:
+    """Wilder: TR from bar 1; first ATR at bar n is the mean of TR[1..n], then smoothed."""
+    tr = [math.nan] + [
+        max(h[i] - lo[i], abs(h[i] - c[i - 1]), abs(lo[i] - c[i - 1])) for i in range(1, len(c))
+    ]
+    out = [math.nan] * len(c)
+    out[n] = sum(tr[1 : n + 1]) / n
+    for i in range(n + 1, len(c)):
+        out[i] = (out[i - 1] * (n - 1) + tr[i]) / n
+    return out
+
+
+def _ref_supertrend(b: Bars, n: int, k: float) -> tuple[list[float], list[float]]:
+    """Final-band formulation; starts in an up-trend (the convention ta.supertrend uses)."""
+    h, lo, c = list(b.high), list(b.low), list(b.close)
+    atr = _ref_atr(h, lo, c, n)
+    fu = fl = math.nan
+    st_line, st_dir = [math.nan] * len(c), [math.nan] * len(c)
+    up = True
+    for i in range(n, len(c)):
+        mid = (h[i] + lo[i]) / 2
+        bu, bl = mid + k * atr[i], mid - k * atr[i]
+        fu = bu if math.isnan(fu) or bu < fu or c[i - 1] > fu else fu
+        fl = bl if math.isnan(fl) or bl > fl or c[i - 1] < fl else fl
+        up = c[i] >= fl if up else c[i] > fu
+        st_dir[i], st_line[i] = (1.0, fl) if up else (-1.0, fu)
+    return st_line, st_dir
+
+
+@pytest.mark.parametrize("seed", [1, 2, 3])
+def test_keltner_matches_an_independent_reference(seed: int) -> None:
+    b = _ohlc(seed)
+    lo, mid, up = ta.keltner(b, 20, 10, 2.0)
+    m = np.array(_ref_ema(list(b.close), 20))
+    a = np.array(_ref_atr(list(b.high), list(b.low), list(b.close), 10))
+    ok = ~np.isnan(m) & ~np.isnan(a)
+    np.testing.assert_allclose(mid[ok], m[ok], rtol=1e-9)
+    np.testing.assert_allclose(up[ok], (m + 2 * a)[ok], rtol=1e-9)
+    np.testing.assert_allclose(lo[ok], (m - 2 * a)[ok], rtol=1e-9)
+    assert np.isnan(up[~ok]).all()
+
+
+@pytest.mark.parametrize("seed", [1, 2, 3, 4, 5])
+def test_supertrend_matches_an_independent_reference(seed: int) -> None:
+    b = _ohlc(seed)
+    line, d = ta.supertrend(b, 10, 3.0)
+    ref_line, ref_d = (np.array(x) for x in _ref_supertrend(b, 10, 3.0))
+    ok = ~np.isnan(ref_line)
+    assert (np.isnan(line) == ~ok).all()
+    assert (d[ok] == ref_d[ok]).all()
+    assert (np.diff(d[ok]) != 0).sum() >= 3  # the fixture actually flips
+    np.testing.assert_allclose(line[ok], ref_line[ok], rtol=1e-9)
