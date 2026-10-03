@@ -97,6 +97,12 @@ instrument.
 > is derivable from consecutive `fundingTime` values and must not be hardcoded. Accordingly, funding
 > partitions are labelled `timeframe=funding` rather than `timeframe=8h`, so the store does not
 > assert a cadence it cannot guarantee.
+>
+> **Note added 2026-10-03 (M2), from `docs/M1_COVERAGE_REPORT.md`:** the universe at the final M1
+> backfill (2026-10-03 08:30) is not the one tabulated above. **NIGHT** joined (4h) and **AAVE** left,
+> so **four** instruments settle every 4h (CL, NIGHT, PUMP, TRUMP). The table above stays as measured on
+> 2026-10-02. It shows that the universe, and so the set of 4h instruments, drifts. That is one more
+> reason the interval must be read per instrument from the data, never listed.
 
 The boundary is **identical across all three symbols** and sits ~95 days from the measurement date,
 while the instruments listed in 2019 and 2021. That is a **venue retention limit**, not a listing

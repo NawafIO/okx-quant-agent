@@ -17,8 +17,8 @@ A quantitative multi-agent trading system for OKX, built under a strict phased p
 | | |
 |---|---|
 | Phase | 2 of 4 - Foundation & Research |
-| Milestone | **M1 complete** (data pipeline, venue reconnaissance). M0 complete. |
-| Next | M2 - Event-driven backtester + §11.3 acceptance gates |
+| Milestone | **M2 in progress**: engine, frozen gates, trial counter, holdout and funding model built; sign-off blocked on real data (`docs/M2_DESIGN.md`). M0, M1 complete. |
+| Next | M2 sign-off: D1 validation, random-entry sanity check on real data, P-11 on a persistent host |
 | Environments buildable | DEMO (M6), PAPER (M7) |
 | Environments locked | **LIVE** |
 
@@ -108,6 +108,23 @@ Validation **quarantines, never repairs**: no forward-filling, no interpolation,
 are recorded in the manifest, because a missing bar is information - a venue outage or a halt - and
 the backtester needs to know which.
 
+## Backtest engine (M2)
+
+```bash
+python -m okxq.backtest.cli funding-validate --env PAPER   # D1 gate; exit 3 = escalate
+python -m okxq.backtest.cli funding-model    --env PAPER   # writes modelled funding (only after PASS)
+python -m okxq.backtest.cli sanity-random    --env PAPER --specs docs/instrument_specs.json \
+    --maker <rate> --taker <rate> --fee-evidence "<source, date>"
+```
+
+The engine refuses venue parameters that were not measured, and funding series that do not cover
+the window. Gate thresholds and definitions are frozen in `src/okxq/backtest/gates.py` and pinned by a
+guard test. The holdout (2025-10-01 onward) is unreadable through the research loader. Design record
+and Chief Advisor rulings: `docs/M2_DESIGN.md`.
+
+Linux funding archive (P-11) on a **persistent** host: `scripts/archive_funding.sh --install`, then
+`--status` to confirm that it actually ran.
+
 ## Layout
 
 ```
@@ -119,6 +136,7 @@ src/okxq/
   audit/chain.py    §20.2 append-only hash-chained audit trail
   obs/              structured JSON logging + secret redaction
   data/             §12 pipeline: okx_public, validate, store, manifest, backfill, cli
+  backtest/         §11 engine, frozen gates, trial counter, sealed holdout, funding model
   run.py            CLI entry point; --env required
 tests/
   guards/           ZERO-LIVE-CAPITAL guards - a failure here blocks all progress

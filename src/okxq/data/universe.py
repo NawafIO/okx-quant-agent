@@ -85,6 +85,5 @@ def select_universe(
 def as_instruments(entries: list[UniverseEntry]) -> list[dict[str, object]]:
     """Convert to the plain dicts the backfiller consumes."""
     return [
-        {"symbol": e.symbol, "inst_id": e.inst_id, "inst_family": e.inst_family}
-        for e in entries
+        {"symbol": e.symbol, "inst_id": e.inst_id, "inst_family": e.inst_family} for e in entries
     ]

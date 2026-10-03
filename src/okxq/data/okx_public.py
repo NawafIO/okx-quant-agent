@@ -101,7 +101,13 @@ class OkxPublic:
 
     def __init__(self, *, max_retries: int = 5) -> None:
         # No apiKey/secret/password is passed. There is nothing to authenticate with.
-        self._ex = ccxt.okx({"enableRateLimit": True})
+        #
+        # requests_trust_env: ccxt defaults it to False, which makes `requests` ignore the
+        # standard HTTPS_PROXY / REQUESTS_CA_BUNDLE environment. Behind a TLS-inspecting
+        # proxy that fails certificate verification (measured 2026-10-03 in the cloud host).
+        # Honouring the environment keeps verification ON with the configured CA bundle -
+        # verification is never disabled. With no such variables set, behaviour is unchanged.
+        self._ex = ccxt.okx({"enableRateLimit": True, "requests_trust_env": True})
         self._max_retries = max_retries
         self._request_count = 0
 
@@ -149,7 +155,8 @@ class OkxPublic:
                 last = exc
                 # Jitter avoids synchronised retry storms across symbols.
                 time.sleep(delay * (2**attempt) + (self._request_count % 7) * 0.01)
-        raise VenueError(f"{getattr(fn, '__name__', fn)} failed after {self._max_retries}") from last
+        name = getattr(fn, "__name__", fn)
+        raise VenueError(f"{name} failed after {self._max_retries}") from last
 
     # --- universe ----------------------------------------------------------------------
 
@@ -216,9 +223,7 @@ class OkxPublic:
                 else self._ex.publicGetMarketIndexCandles
             )
         return (
-            self._ex.publicGetMarketHistoryCandles
-            if history
-            else self._ex.publicGetMarketCandles
+            self._ex.publicGetMarketHistoryCandles if history else self._ex.publicGetMarketCandles
         )
 
     def candle_instrument(self, market: dict[str, Any], price_type: str) -> str:
