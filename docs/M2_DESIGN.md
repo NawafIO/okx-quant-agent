@@ -278,6 +278,10 @@ evaluation). Conditions:
 13. **One timeframe per engine run** (closing audit M-5). Mixed timeframes are refused, because bars closing
     at the same T would open at different instants. A strategy wanting a 1d regime with 1h entries must
     resample inside the strategy from its 1h view.
+14. **The research slippage model is 1h-only** (Chief Advisor, M4 checkpoint 2). `RESEARCH_SLIPPAGE`
+    counts its lookbacks in bars: a 168-bar spread estimate and a 24-bar sigma for impact and stop
+    overshoot. All of it was calibrated on 1h bars. On 1d bars the overshoot term would be about √24
+    times too large. A 1d run needs its own calibration first, so every M4 candidate runs on 1h bars.
 
 ---
 

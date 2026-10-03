@@ -64,3 +64,23 @@ and the outcome that would falsify it.
 | `keltner_reversion` | 1h | Short-horizon overreaction. Its ADX filter is a **locally implemented regime gate** (ADX < 20 is roughly RANGE), so the 2-4 week lag fact applies to it |
 | `vol_compression_breakout` | 1h | Volatility clustering: range expansion after compression |
 | `funding_carry` | — | **NOT EVALUABLE.** funding-bound-v1 never pays a receipt, so the strategy fails by construction outside the ~95-day realised window. A vendor funding archive is what would make it testable. Recorded, not run |
+
+## 5. Chief Advisor checkpoint 2 (after trend_breakout run 1)
+
+- **trend_breakout: DISCARD stands** (`docs/m4_runs/trend_breakout_run1.txt`).
+  - The funding bound and the universe stay frozen for the remaining candidates.
+  - A bound revision is allowed only as a **Phase-2 cost-model change**. It would be decided before any further candidate runs, apply to all candidates, and carry a new cost-config sha.
+  - Logged trials are immutable. trend_breakout would be re-evaluated as NEW trials under the new sha, with run 1 kept beside them.
+- **The funding bound is the dominant cost in the research programme.**
+  - Attribution (`docs/m4_runs/trend_breakout_run1_attribution.txt`): funding −32.2k, all of it funding-bound-v1, against fees −2.6k and slippage −1.8k.
+  - SAND shorts alone account for −26.1k over 15 trades. That traces to a single −0.01 print (M2 finding M-6).
+  - This is the concrete cost of having no measured funding history (VENUE_FACTS §6). **Whether to buy an archive is the user's decision.**
+- **Attribution comes from stored results.** The runner now prints per-instrument and per-side gross, fees, slippage, funding and net; long-only, short-only and BTC+ETH lines; and the bound's share.
+  - The 17 `diagnostic` trials of the one-off re-run stay in N.
+  - Any future diagnostic re-run needs a recorded reason.
+- **Longs gross-positive on 7 of 8 instruments, shorts gross-negative on the majors.** This reads as survivorship beta (V-14), not breakout edge.
+- **Deviations accepted:**
+  - All candidates run on 1h bars, with a T-1 test on trend_breakout's daily aggregation (M2 open issue 14).
+  - The research start was corrected at N=0.
+  - `target_atr = 10` is a declared parameter.
+- **Contract-design point for the user:** `contracts.Signal` requires at least one take-profit (§4). That forces a nominal target onto strategies that have none, such as trend following. M4 does not patch the contract; it declares the target as a perturbed parameter instead.

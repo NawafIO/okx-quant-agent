@@ -282,3 +282,34 @@ def test_grid_is_at_most_8_configurations_of_declared_parameters(module: Any) ->
     grid = module.SPEC.grid(module.GRID)
     assert 1 <= len(grid) <= 8
     assert len({tuple(sorted(p.items())) for p in grid}) == len(grid)
+
+
+# --- trend_breakout's self-aggregated daily bars (Chief Advisor, M4 checkpoint 2) ----------
+
+
+def test_daily_aggregation_excludes_the_current_day_until_its_2300_bar_has_closed() -> None:
+    buf = synthetic(3, 24 * 40)
+    view = HistoryView(buf, 24 * 40)
+    for n in range(24 * 30, 24 * 40):
+        ctx = MarketContext(
+            "PAPER",
+            T0 + n * HOUR_MS,
+            buf.inst_id,
+            HOUR_MS,
+            BoundedView(HistoryView(buf, n), 24 * 20),
+            None,
+            None,
+        )
+        d = trend_breakout.daily(ctx)
+        last_bar = n - 1  # the bar that just closed
+        if (last_bar + 1) % 24:
+            assert d is None, f"decided mid-day at bar {last_bar}"
+            continue
+        assert d is not None
+        hi, lo, cl = d
+        day_bars = range(last_bar - 23, last_bar + 1)
+        # The last daily bar is exactly the day that just closed - its 24 hours, no more.
+        assert cl[-1] == view.bar(last_bar)[4]
+        assert hi[-1] == max(view.bar(i)[2] for i in day_bars)
+        assert lo[-1] == min(view.bar(i)[3] for i in day_bars)
+        assert len(cl) == 20  # 20 whole days in the bounded window, none partial

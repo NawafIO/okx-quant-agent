@@ -2,11 +2,13 @@
 
     python scripts/m4_attribution.py docs/m4_runs/trend_breakout_run1.txt
 
-Re-runs each fold's out-of-sample window with the params that run selected (parsed from the
-run's output), through ResearchProtocol so every evaluation is LOGGED (purpose
-"diagnostic"; N rises, the conservative direction), and splits P&L per instrument and side
-into gross, fees, slippage and funding - including how much funding came from the adverse
-funding-bound-v1.
+Used ONCE, for trend_breakout run 1, before the runner emitted attribution itself (Chief
+Advisor M4 checkpoint 2: attribution comes from stored results; a diagnostic re-run needs a
+recorded reason). Re-runs each fold's out-of-sample window with the params that run
+selected (parsed from its output), through ResearchProtocol so every evaluation is LOGGED
+(purpose "diagnostic"; N rises, the conservative direction), and prints the runner's
+attribution: gross, fees, slippage and funding per instrument and side, and how much
+funding came from the adverse funding-bound-v1.
 """
 
 from __future__ import annotations
@@ -15,11 +17,16 @@ import ast
 import json
 import re
 import sys
-from collections import defaultdict
-from decimal import Decimal
 from pathlib import Path
 
-from m4_research import MODULES, RESEARCH_START_MS, ROOT, WARMUP_MS, Provider
+from m4_research import (
+    MODULES,
+    RESEARCH_START_MS,
+    ROOT,
+    WARMUP_MS,
+    Provider,
+    print_attribution,
+)
 
 from okxq.backtest import costs
 from okxq.backtest.cli import _load_specs
@@ -50,55 +57,7 @@ def main() -> int:
     wf = proto.walk_forward(
         [], RESEARCH_START_MS, FROZEN.holdout_start_ms, fixed=fixed, purpose="diagnostic"
     )
-    agg: dict[tuple[str, str], dict[str, Decimal]] = defaultdict(lambda: defaultdict(Decimal))
-    for fr in wf.folds:
-        if fr.oos is None:
-            continue
-        r = fr.oos.result
-        for t in r.trades:
-            a = agg[(t.inst_id, str(t.side))]
-            a["n"] += 1
-            a["gross"] += t.gross_pnl
-            a["fees"] -= t.fees
-            a["slip"] -= t.slippage_cost
-            a["funding"] += t.funding
-            a["net"] += t.net_pnl
-    print(
-        f"{sid}: OOS attribution over {len(fixed)} folds (gross includes slippage; "
-        "fees and funding shown separately; net = gross + fees + funding)"
-    )
-    print(
-        f"  {'instrument':<16}{'side':<6}{'n':>5}{'gross':>12}{'fees':>11}{'slip':>11}"
-        f"{'funding':>11}{'net':>12}"
-    )
-    tot: dict[str, Decimal] = defaultdict(Decimal)
-    for (inst, side), a in sorted(agg.items()):
-        print(
-            f"  {inst:<16}{side:<6}{int(a['n']):>5}{a['gross']:>12.0f}{a['fees']:>11.0f}"
-            f"{a['slip']:>11.0f}{a['funding']:>11.0f}{a['net']:>12.0f}"
-        )
-        for k in ("gross", "fees", "slip", "funding", "net"):
-            tot[k] += a[k]
-    print(
-        f"  {'TOTAL':<22}{'':>5}{tot['gross']:>12.0f}{tot['fees']:>11.0f}{tot['slip']:>11.0f}"
-        f"{tot['funding']:>11.0f}{tot['net']:>12.0f}"
-    )
-    b = sum(
-        (f.cash_flow for fr in wf.folds if fr.oos for f in fr.oos.result.funding if f.bound),
-        Decimal(0),
-    )
-    allf = sum(
-        (f.cash_flow for fr in wf.folds if fr.oos for f in fr.oos.result.funding), Decimal(0)
-    )
-    by_inst: dict[str, Decimal] = defaultdict(Decimal)
-    for fr in wf.folds:
-        if fr.oos:
-            for f in fr.oos.result.funding:
-                if f.bound:
-                    by_inst[f.inst_id] += f.cash_flow
-    print(f"\n  funding cash flow total {allf:.0f}, of which from funding-bound-v1 {b:.0f}")
-    for inst, v in sorted(by_inst.items()):
-        print(f"    bound funding {inst:<16} {v:>10.0f}")
+    print_attribution([fr.oos.result for fr in wf.folds if fr.oos])
     print(f"  logged trials now {proto.trials.stats().n_trials}")
     return 0
 

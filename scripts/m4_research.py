@@ -22,6 +22,7 @@ from pathlib import Path
 from okxq.backtest import costs
 from okxq.backtest import metrics as m
 from okxq.backtest.cli import _load_specs
+from okxq.backtest.engine import BacktestResult
 from okxq.backtest.gates import FROZEN
 from okxq.backtest.holdout import load_research_bars, load_research_funding
 from okxq.backtest.sizing import RESEARCH_SIZING
@@ -87,6 +88,52 @@ def _pf(trades: Sequence[ClosedTrade]) -> str:
     return "undef" if pf is None else f"{pf:.3f}"
 
 
+def print_attribution(results: Sequence[BacktestResult]) -> None:
+    """Per-instrument and per-side OOS attribution from stored fold results (no re-runs;
+    Chief Advisor M4 checkpoint 2). Gross includes slippage; net = gross + fees + funding."""
+    trades = [t for r in results for t in r.trades]
+    agg: dict[tuple[str, str], dict[str, Decimal]] = defaultdict(lambda: defaultdict(Decimal))
+    for t in trades:
+        for key in ((t.inst_id, str(t.side)), ("ALL", str(t.side)), ("ALL", "BOTH")):
+            a = agg[key]
+            a["n"] += 1
+            a["gross"] += t.gross_pnl
+            a["fees"] -= t.fees
+            a["slip"] -= t.slippage_cost
+            a["funding"] += t.funding
+            a["net"] += t.net_pnl
+    print("\nOOS attribution (gross includes slippage; net = gross + fees + funding):")
+    print(
+        f"  {'instrument':<16}{'side':<6}{'n':>6}{'gross':>11}{'fees':>10}{'slip':>10}"
+        f"{'funding':>10}{'net':>11}  PF"
+    )
+    for (inst, side), a in sorted(agg.items(), key=lambda kv: (kv[0][0] == "ALL", kv[0])):
+        ts = [
+            t
+            for t in trades
+            if (inst == "ALL" or t.inst_id == inst) and (side == "BOTH" or str(t.side) == side)
+        ]
+        print(
+            f"  {inst:<16}{side:<6}{int(a['n']):>6}{a['gross']:>11.0f}{a['fees']:>10.0f}"
+            f"{a['slip']:>10.0f}{a['funding']:>10.0f}{a['net']:>11.0f}  {_pf(ts)}"
+        )
+    core = [t for t in trades if t.inst_id in ("BTC-USDT-SWAP", "ETH-USDT-SWAP")]
+    core_net = sum((t.net_pnl for t in core), Decimal(0))
+    print(f"  {'BTC+ETH only':<22}{len(core):>6}{'':>41}{core_net:>11.0f}  {_pf(core)}")
+    bound: dict[str, Decimal] = defaultdict(Decimal)
+    total = Decimal(0)
+    for r in results:
+        for f in r.funding:
+            total += f.cash_flow
+            if f.bound:
+                bound[f.inst_id] += f.cash_flow
+    print(
+        f"  funding cash flow {total:.0f}, of which funding-bound-v1 "
+        f"{sum(bound.values(), Decimal(0)):.0f}: "
+        + ", ".join(f"{k.split('-')[0]} {v:.0f}" for k, v in sorted(bound.items()))
+    )
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("strategy", choices=sorted(MODULES))
@@ -138,17 +185,7 @@ def main() -> int:
         net = sum((t.net_pnl for t in fr.oos.result.trades), Decimal(0)) if fr.oos else 0
         t0 = datetime.fromtimestamp(fr.fold.test_start_ms / 1000, tz=UTC).date()
         print(f"  fold {fr.fold.index:>2} test {t0}: {n:>5} trades, net {net:>12.2f}, params {sel}")
-    by: dict[str, list[ClosedTrade]] = defaultdict(list)
-    for t in oos:
-        by[t.inst_id].append(t)
-    print("\nper-instrument OOS breakdown:")
-    for inst in sorted(by):
-        ts = by[inst]
-        net = sum((t.net_pnl for t in ts), Decimal(0))
-        print(f"  {inst:<16} trades {len(ts):>5}  net {net:>12.2f}  PF {_pf(ts)}")
-    core = [t for t in oos if t.inst_id in ("BTC-USDT-SWAP", "ETH-USDT-SWAP")]
-    core_net = sum((t.net_pnl for t in core), Decimal(0))
-    print(f"  BTC+ETH only     trades {len(core):>5}  net {core_net:>12.2f}  PF {_pf(core)}")
+    print_attribution([fr.oos.result for fr in res.walk_forward.folds if fr.oos])
     print(f"\n{CAVEAT}")
     return 0
 
