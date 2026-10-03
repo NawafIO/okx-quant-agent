@@ -7,6 +7,7 @@ local run at modest cost: it catches an engine that gives away more than ~4 bps 
 
 from __future__ import annotations
 
+import itertools
 from decimal import Decimal
 
 import pytest
@@ -18,7 +19,7 @@ from okxq.backtest.costs import RESEARCH_SLIPPAGE
 def test_generator_is_a_fat_tailed_price_martingale() -> None:
     b = mg.martingale_bars(20_000, 7)
     closes = [float(c) for c in b.close]
-    rets = [b / a - 1 for a, b in zip(closes, closes[1:], strict=False)]
+    rets = [b / a - 1 for a, b in itertools.pairwise(closes)]
     mean = sum(rets) / len(rets)
     sd = (sum((r - mean) ** 2 for r in rets) / len(rets)) ** 0.5
     assert abs(mean) < 3 * sd / len(rets) ** 0.5  # E[p_next / p] = 1
