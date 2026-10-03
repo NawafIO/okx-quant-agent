@@ -285,3 +285,26 @@ repair" cuts both ways: relabelling observed bars as gaps because they are incon
 a repair. The engine already treats them pessimistically. With no volume nothing fills (the
 participation cap is a share of the previous bar's volume), and open exposure persists through
 them. Backtests report such entries as liquidity outcomes rather than hiding them.
+
+---
+
+## 10. V-14: delisted perpetuals are NOT served (measured 2026-10-03, M4)
+
+**OKX public endpoints do not serve delisted perpetuals. Survivorship bias cannot be repaired
+from this venue.**
+
+| Probe (`GET /api/v5/market/history-candles?bar=1D&after=1651363200000`) | Response |
+|---|---|
+| `FTT-USDT-SWAP` (delisted after FTX, Nov 2022) | `{"code":"51001","data":[],"msg":"Instrument ID, Instrument ID code, or Spread ID doesn't exist."}` |
+| `LUNC-USDT-SWAP` (the original Terra LUNA perp, renamed) | same `51001` |
+| `LUNA-USDT-SWAP` | `{"code":"0","data":[]}`: the id now belongs to the RELAUNCHED Terra 2.0 and has no May-2022 bars |
+| `BTC-USDT-SWAP` (control) | bars returned |
+
+`GET /api/v5/public/instruments?instType=SWAP` lists only the 500 instruments live now. Delisted ones
+cannot be enumerated from the venue, so a delisted set would have to be built from announcements.
+
+Consequences (Chief Advisor ruling, M4 checkpoint 1):
+- §11.2's survivorship requirement is **unmeetable on this venue**, not merely unmet.
+- Every M4 result carries the survivorship caveat (docs/M4_DESIGN.md) and a per-instrument breakdown.
+- Promotion needs the owner's written acceptance of this fact on the audit chain (U-3).
+- The only known route is a cross-venue archive. It is **not a repair**: it has different prices, funding and listing dates. The decision belongs to the user.
