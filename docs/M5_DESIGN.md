@@ -1,6 +1,6 @@
 # M5 design: Risk Engine + Portfolio Manager + Kill Switch (PLAN, for Chief Advisor review)
 
-Status: **CLOSED by the Chief Advisor (CLOSE, §15)**, with one owner item open: run `scripts/verify.ps1` on Windows before M5 is recorded as "full green" (finding #7: closed in code, not yet evidenced). Scope: roadmap M5, architecture §13, §14 and §19.3. Pure, offline, no network, no credentials. Phase stays 2; no LIVE path is touched.
+Status: **CLOSED - full green on Linux CI AND Windows** (§16). Chief Advisor verdict CLOSE (§15).
 
 ## 0. Constraints carried in
 
@@ -367,3 +367,42 @@ Every finding is confirmed closed in code (2b62e25).
 - **Contract units:** the conversion test (§11), which uses the spec snapshot and the `measured_utc` age.
 - **Audit-chain performance:** separate the kill switch's chain from the proposal chain, or verify it incrementally.
 - **Research before any holdout:** re-run a candidate under the risk-engine configuration (Q4).
+
+## 16. Full green: Windows evidence, and what it took to get there
+
+**Owner run, 2026-10-03, Windows, Python 3.12.10, commit d31d34e: `scripts/verify.ps1` ended `ALL CHECKS PASSED`.**
+
+| Check | Result |
+|---|---|
+| Lint, format, strict mypy | Passed. mypy covered 108 files, tests included |
+| Guards | 122 passed, 3 skipped (pwsh end-to-end tests, which need a Linux shell; CI runs them) |
+| Full suite | 760 passed, 4 skipped, 2 xfailed. The 4th skip is the `/proc` handle-leak test; on Windows the unlink in the lost-database test is that check, and it passed |
+| Risk engine | **100% branch coverage of `okxq.risk` with no exclusions, on Windows**: 791 statements, 186 branches |
+
+**CI on Linux:** runs 62, 63 and 64 are green, with every step executed.
+
+### Recorded plainly: the earlier "green" claims were not true
+
+- **`verify.ps1` never ran a single check on Windows from M0 until this fix (834b7b0).** `Invoke-Step` named its parameter `$Args`, a PowerShell automatic variable, so every step started a bare Python REPL. Typing `exit()` returned 0, so each step "passed".
+- **CI was red for 22 consecutive runs (40–61), covering all of M4 and M5.** It failed at mypy, so the guards, suite, martingale invariant and risk-coverage gate never ran in CI over that span. M4 and M5 were reported green from local runs only, and CI was not checked.
+- **The local type check was narrowed.** It ran as `mypy src`, while the configured check is plain `mypy`, which covers `src` and `tests`. That hid 57 type errors in the test files.
+
+### Defects the first real Windows runs found, all fixed
+
+| Defect | Commit |
+|---|---|
+| The `$Args` REPL bug | 834b7b0, with a guard that runs the real script under pwsh in CI |
+| 57 test type errors | 0a4c69f |
+| CRLF checkout broke the byte-hashed pins (`.coveragerc-risk`, and the regime and R-8 pre-registration keys, which would have REFUSED on Windows) | a2dd5c4, LF-normalised hashing; the full suite was verified on a simulated CRLF checkout |
+| **A real risk-store defect:** SQLite connections were left to the garbage collector, which locks the portfolio database on Windows | d31d34e, `closing()` on every connection, plus a leak test |
+| The directory-fsync branch was uncovered on Windows | d31d34e, a faked-OS test |
+
+### Process rules adopted from this
+
+- Run the **configured** commands, never narrowed variants: `mypy`, not `mypy src`.
+- **Read CI after every push.** A local pass is not "green".
+- A Windows claim needs a Windows run.
+
+### Still open, owner side
+
+- **U-2, P-11 evidence.** The scheduled task was registered while the Windows checkout was at 23796ff, so it predates the current `archive_funding.ps1` and the data code it calls (b8104c7). Re-register and re-check: `-Install`, then `-RunNow`, then `-Status`, in an elevated PowerShell.
