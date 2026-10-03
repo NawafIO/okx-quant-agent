@@ -11,7 +11,7 @@ from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
 from okxq.contracts import TradeProposal
-from okxq.risk import engine
+from okxq.risk import checks, engine
 from okxq.risk import policy as pol
 from okxq.risk.engine import evaluate
 from okxq.risk.policy import FROZEN_RISK_POLICY as P
@@ -71,7 +71,7 @@ def test_a_check_that_raises_fails_and_a_missing_check_fails(
     def boom(_: object) -> None:
         raise RuntimeError
 
-    battery = dict(engine.BATTERY) | {"RC-05": boom}
+    battery = dict(checks.BATTERY) | {"RC-05": boom}
     del battery["RC-08"]
     monkeypatch.setattr(engine, "BATTERY", battery)
     p = run()
@@ -226,10 +226,11 @@ FACT_FIELDS = [
 def test_malformed_input_rejects_and_evaluate_never_raises(
     where: str, s_field: str, f_field: str, bad: object
 ) -> None:
+    change: dict[str, Any] = {s_field if where == "snap" else f_field: bad}
     if where == "snap":
-        p = run(snap=replace(snap(), **{s_field: bad}))
+        p = run(snap=replace(snap(), **change))
     else:
-        p = run(facts=replace(facts(), **{f_field: bad}))
+        p = run(facts=replace(facts(), **change))
     # Values that are legitimately valid for the field; repr-keyed (sNaN cannot be hashed).
     tolerated = {
         ("snap", "entries_last_hour", "0"),
@@ -289,8 +290,10 @@ def test_qualitative_input_is_monotone_risk_reducing(
 def test_extreme_magnitudes_never_raise_and_never_break_the_budget(
     where: str, s_field: str, f_field: str, big: Decimal
 ) -> None:
-    sn = replace(snap(), **{s_field: big}) if where == "snap" else snap()
-    fa = replace(facts(), **{f_field: big}) if where == "facts" else facts()
+    s_change: dict[str, Any] = {s_field: big}
+    f_change: dict[str, Any] = {f_field: big}
+    sn = replace(snap(), **s_change) if where == "snap" else snap()
+    fa = replace(facts(), **f_change) if where == "facts" else facts()
     p = run(snap=sn, facts=fa)
     if p.verdict == "APPROVED":
         assert p.risk_amount <= sn.equity * P.max_risk_per_trade

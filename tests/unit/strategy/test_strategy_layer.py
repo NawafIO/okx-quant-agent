@@ -91,9 +91,9 @@ def test_no_signal_without_a_stop_loss() -> None:
         "conviction": "1",
     }
     with pytest.raises(ValidationError):
-        Signal(**fields)  # type: ignore[arg-type]
+        Signal(**fields)
     with pytest.raises(ValidationError):  # stop on the wrong side of entry
-        Signal(**fields, stop_loss="101")  # type: ignore[arg-type]
+        Signal(**fields, stop_loss="101")
 
 
 # --- constants rule ------------------------------------------------------------------------

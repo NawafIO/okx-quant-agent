@@ -46,7 +46,11 @@ def test_the_default_fixture_is_approved_with_hand_computed_values() -> None:
     p = run()
     assert p.verdict == "APPROVED"
     assert (p.qty_base, p.notional_quote, p.risk_amount) == (D(25), D(2500), D(50))
-    assert (p.risk_pct_of_equity, p.leverage, p.liquidation_estimate) == (D("0.005"), 1, D("0.4"))
+    assert (p.risk_pct_of_equity, p.leverage, p.liquidation_estimate) == (
+        D("0.005"),
+        D(1),
+        D("0.4"),
+    )
     assert [c.check_id for c in p.risk_checks] == list(P.required_checks)
 
 
@@ -65,13 +69,13 @@ def test_sz2_missing_atr() -> None:
 
 def test_sz3_stop_tighter_than_ten_ticks() -> None:
     assert check(run(facts=facts(tick_size=D(1))), "SZ-3")[:3] == (False, D(2), D(10))
-    assert check(run(facts=facts(tick_size=None)), "SZ-3")[0] is False  # type: ignore[arg-type]
+    assert check(run(facts=facts(tick_size=None)), "SZ-3")[0] is False
 
 
 def test_sz4_a_budget_below_one_lot_rejects_never_inflates() -> None:
     p = run(snap=snap(equity=D("0.0001"), high_water_mark=D("0.0001"), day_open_equity=D("0.0001")))
     assert check(p, "SZ-4")[0] is False and p.verdict == "REJECTED" and p.qty_base == 0
-    assert check(run(facts=facts(lot_size_base=None)), "SZ-4")[0] is False  # type: ignore[arg-type]
+    assert check(run(facts=facts(lot_size_base=None)), "SZ-4")[0] is False
 
 
 def test_sz1_wrong_side_stop_rejects_even_if_the_contract_were_bypassed() -> None:
@@ -161,7 +165,7 @@ def test_rc07_unmapped_symbol_rejects() -> None:
 def test_open_risk_default_deny_and_crossed_stops() -> None:
     assert open_risk("garbage", P) is None
     assert open_risk(("x",), P) is None
-    assert open_risk((position(side="FLAT"),), P) is None  # type: ignore[arg-type]
+    assert open_risk((position(side="FLAT"),), P) is None
     assert open_risk((position(qty_base=D("NaN")),), P) is None
     assert open_risk((position(symbol="NEW-USDT-SWAP"),), P) is None
     assert open_risk((position(mark=D(80)),), P) is None  # stop crossed: incident (#6)
@@ -183,13 +187,13 @@ def test_rc08_max_positions() -> None:
     )
     assert check(run(snap=snap(positions=five)), "RC-08")[:3] == (False, D(6), D(5))
     assert check(run(snap=snap(positions=five[:4])), "RC-08")[:3] == (True, D(5), D(5))
-    assert check(run(snap=snap(positions="x")), "RC-08")[0] is False  # type: ignore[arg-type]
+    assert check(run(snap=snap(positions="x")), "RC-08")[0] is False
 
 
 def test_rc09_one_per_symbol_and_no_duplicate_signal() -> None:
     assert "RC-09" in failed(run(snap=snap(positions=(position(symbol=SYM),))))
     assert failed(run(snap=snap(signals_this_bar=(SYM,)))) == ["RC-09"]
-    assert check(run(snap=snap(signals_this_bar="x")), "RC-09")[0] is False  # type: ignore[arg-type]
+    assert check(run(snap=snap(signals_this_bar="x")), "RC-09")[0] is False
 
 
 # --- RC-10 / RC-11: exact thresholds --------------------------------------------------------
@@ -230,7 +234,7 @@ def test_rc12bc_tight_stop_cannot_manufacture_a_huge_position() -> None:
 
 def test_rc12c_free_margin_and_rc12b_equity_missing() -> None:
     assert check(run(snap=snap(free_margin=D(0))), "RC-12c")[0] is False
-    assert check(run(snap=snap(free_margin=None)), "RC-12c")[0] is False  # type: ignore[arg-type]
+    assert check(run(snap=snap(free_margin=None)), "RC-12c")[0] is False
     assert ch.rc12b(_ctx(SIZED, snap=snap(equity=D(0)))).passed is False
 
 
@@ -238,7 +242,7 @@ def test_rc12d_min_size_and_lot_step() -> None:
     assert check(run(facts=facts(min_size_base=D(100))), "RC-12d")[:3] == (False, D(25), D(100))
     off_step = replace(SIZED, qty=D("25.00005"))
     assert ch.rc12d(_ctx(off_step)).passed is False
-    assert check(run(facts=facts(min_size_base=None)), "RC-12d")[0] is False  # type: ignore[arg-type]
+    assert check(run(facts=facts(min_size_base=None)), "RC-12d")[0] is False
 
 
 def test_rc12e_unmeasured_max_size_rejects() -> None:

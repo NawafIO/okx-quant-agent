@@ -16,6 +16,7 @@ from okxq.risk.portfolio import (
     DAY_MS,
     HOUR_MS,
     Closed,
+    Event,
     FundingAccrued,
     Init,
     MarkUpdate,
@@ -115,7 +116,7 @@ def test_double_open_and_bad_close_price_raise() -> None:
 
 # --- persistence ---------------------------------------------------------------------------
 
-EVENTS = [
+EVENTS: list[Event] = [
     Init(T0, D(10_000)),
     opened(),
     MarkUpdate(T0 + 2, BTC, D(97)),
@@ -156,7 +157,7 @@ def test_an_audit_failure_rolls_the_event_back(
     with pytest.raises(OSError, match="disk full"):
         st.append(EVENTS[1])
     monkeypatch.undo()
-    assert st.load() == initial("PAPER", EVENTS[0])  # the Opened row was rolled back
+    assert st.load() == initial("PAPER", Init(T0, D(10_000)))  # the Opened row was rolled back
 
 
 def test_a_lost_database_never_resets_the_baselines(tmp_path: Path) -> None:

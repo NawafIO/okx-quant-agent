@@ -174,7 +174,7 @@ def test_r4_no_llm_sourced_field_outside_the_qualitative_gate(path: Path) -> Non
             else None
         )
         if name in LLM_NAMES:
-            hits.append((n.lineno, name))
+            hits.append((getattr(n, "lineno", 0), name))
         if isinstance(n, ast.ImportFrom):
             hits += [(n.lineno, a.name) for a in n.names if a.name in LLM_NAMES]
         if isinstance(n, ast.Constant) and n.value in LLM_NAMES:

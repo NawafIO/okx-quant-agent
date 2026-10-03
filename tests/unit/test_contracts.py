@@ -268,7 +268,7 @@ def _proposal(**over: object) -> TradeProposal:
         "verdict": "APPROVED",
         "expires_at": NOW + timedelta(seconds=60),
     }
-    return TradeProposal(**(fields | over))  # type: ignore[arg-type]
+    return TradeProposal(**(fields | over))
 
 
 REJECTED_ZERO = {

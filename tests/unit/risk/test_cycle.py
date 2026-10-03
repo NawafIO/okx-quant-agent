@@ -148,7 +148,8 @@ def test_a_mark_beyond_the_stop_is_an_incident_halt(side: str) -> None:
 @pytest.mark.parametrize("field", ["realised", "day_open_equity", "high_water_mark"])
 @pytest.mark.parametrize("value", [D("NaN"), D("Infinity"), D(0), D(-1)])
 def test_a_non_finite_or_non_positive_basis_is_a_halt(field: str, value: D) -> None:
-    s = replace(initial("PAPER", Init(T_MS, D(10_000))), **{field: value})
+    change: dict[str, Any] = {field: value}
+    s = replace(initial("PAPER", Init(T_MS, D(10_000))), **change)
     (h,) = halt_triggers(s, T_MS, P)
     assert h.trigger == "non-finite or non-positive equity basis"
 
@@ -197,7 +198,7 @@ def test_the_protocol_stubs_are_inert() -> None:
     assert cycle.Switch.engaged(Switch()) is None
     assert cycle.Switch.latched(Switch()) is None
     assert cycle.Switch.sentinel_present(Switch()) is None
-    assert cycle.Switch.engage(Switch(), "t", {}) is None
+    cycle.Switch.engage(Switch(), "t", {})  # returns None by signature
     assert cycle.Audit.append(Audit(), "k", {}) is None
     assert cycle.Store.append(Store(None), Init(0, D(1))) is None
 
