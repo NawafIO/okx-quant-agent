@@ -16,7 +16,7 @@ import pytest
 pytestmark = pytest.mark.guard
 
 SRC = Path(__file__).resolve().parents[2] / "src" / "okxq"
-GUARDED_PACKAGES = ("strategy", "strategies", "research")
+GUARDED_PACKAGES = ("strategy", "strategies", "research", "analysis")
 #: Strategy code that already exists. Listed so the guard is never vacuous.
 GUARDED_FILES = ("backtest/reference_strategies.py",)
 FORBIDDEN_MODULES = ("duckdb", "pyarrow", "polars", "okxq.data", "sqlite3", "importlib")
