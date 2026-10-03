@@ -118,7 +118,9 @@ def test_nothing_decided_before_the_cut_depends_on_data_after_it() -> None:
 #: events and an assumption entry; with both stripped the output hashes to dece7ca1 exactly).
 #: 4b1f375c... -> a6882ae7... (slip-v2: only the slippage assumption LABEL changed for this
 #: floor-only fixture; with the old label restored it hashes to 4b1f375c exactly).
-GOLDEN_DIGEST = "a6882ae717d84bca3e3b5b781d649210e35eea90275422a9f02a74920aee3782"
+#: a6882ae7... -> 37e9cb8b... (label now records stop_overshoot_k=0; the fixture runs
+#: with the term disabled, and with that token stripped it hashes to a6882ae7 exactly).
+GOLDEN_DIGEST = "37e9cb8bd04eba9771ecb38b38e149f031ba3b8d9ae9f2b0a5c84706e9d4b084"
 
 
 def test_golden_fixture() -> None:

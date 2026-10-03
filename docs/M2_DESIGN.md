@@ -1,9 +1,10 @@
 # M2 - Backtest Engine & Acceptance Gates: Design Record
 
-Status (2026-10-03): **engine, gates, trial counter, holdout and funding model are built and pass
-every acceptance test that can run on synthetic data. M2 is NOT signed off.** The remaining criteria
-need real market data, and this cloud environment can't reach OKX (`www.okx.com` returns 403 from the
-network policy). See [Sign-off checklist](#sign-off-checklist).
+Status (2026-10-03, updated after the real-data runs): **M2 is NOT signed off.** Real data is
+backfilled and independently verified. On it, the D1 funding model FAILED validation and was replaced
+by an adverse bound (§2c). The cost model was recalibrated twice (§2d). The engine's stop path turned
+out to be optimistic and now carries a frozen overshoot term (§2e). Remaining blockers are in the
+[Sign-off checklist](#sign-off-checklist): measured perp fees (user) and P-11 run evidence.
 
 Code: `src/okxq/backtest/`. Tests: `tests/unit/backtest/`, plus two new guard modules in
 `tests/guards/`. Guard tests: **57** (the original 35 are unchanged, 22 added, none removed or weakened).
@@ -103,6 +104,84 @@ The targeted counter-example is the regression for defect 1.
 
 ---
 
+## 2c. D1 escalation ruling: funding model failed, adverse bound adopted (2026-10-03)
+
+`premium-linear-v1` on the real 95-day overlap: 3/20 instruments within tolerance (BTC 3.0%, ETH 1.5%,
+HYPE 9.3%), 17 failed (e.g. SNDK 358%, MU 243%, NIGHT and CL with the wrong sign). The advisor's
+additions:
+- The 3 passes are near-vacuous. The fit (a = 0.099) is essentially a constant of ~0.00005/8h.
+- A 95-day single-regime overlap cannot validate any model across 6.8 years.
+
+**All 20 instruments are unvalidated for history.**
+
+Diagnostics:
+- 13 crypto instruments pile up at an apparent cap: max realised exactly 0.0001/8h (0.00005/4h).
+- The TradFi-like perps (MU, SNDK, XAU, CL) sit at a modal 0 with a two-sided range.
+
+Ruling:
+- **`funding-bound-v1`** for every settlement without a realised or forward-validated rate. A long
+  pays the 95-day max realised rate, a short pays −min, never a receipt, and G-9 doubles it.
+- The bound is frozen in `docs/funding_bound_v1.json` and also used for pre-2026-06-29 holdout funding.
+  It is NOT a bound on 2020–2021 funding; that caveat travels in every result.
+- A revised model family is allowed only with **forward** validation on P-11 data: an instrument
+  needs ≥ 30 days of post-2026-10-03 settlements passing.
+- Every validation look is a D1 trial on the audit chain.
+- **Standing M4 rule:** a candidate must pass on the bound, and pass again when a validated model
+  arrives. A candidate that passes only under the model is discarded.
+- The vendor route (VENUE_FACTS §6) is the only way to get regime coverage. That decision is the user's.
+
+## 2d. Cost model: slip-v2 and the random-entry check (2026-10-03)
+
+**The first real-data random-entry run passed vacuously.**
+- The account was ruined: final equity 6.57 of 100,000.
+- Uncalibrated slip-v1 charged 12–63 bps per side.
+- Measured order books show **every instrument at a 1-tick spread** (`docs/spreads_snapshot_2026-10-03.json`).
+
+Ruling: **slip-v2**, with all inputs from closed bars only:
+`max(1 tick, Abdi-Ranaldo half-spread over 168 closed bars) + price·Y·σ_1h·√(q/V_prev)`
+- Y = 1, an UNCALIBRATED prior.
+- The spread estimator is property-tested for no look-ahead (T-1).
+- `costs.py` is the single source of cost config; results record its sha256.
+
+Fees: 0.08/0.10 are labelled `UNMEASURED_ASSUMPTION`. They match OKX's en-gb **spot** schedule, and
+perp rates are unmeasured. Research may use them; promotion may not.
+
+**The rebuilt check then failed with power:** pre-cost −3.58 ± 0.69 bps over 193,490 trades.
+- A/B with stops that never trigger: +0.17 ± 0.87. The drag is the stop rule meeting real dynamics,
+  not engine fills.
+- The advisor called the original criterion mis-specified, and called my "slip-v2 covers overshoot"
+  claim rationalising.
+
+Ruling:
+- Real data tests **costs** only; the pre-cost mean there is reported, not gated.
+- The ruin floor becomes "zero entries resized or refused", with starting equity sized so that
+  cost < 25%.
+- Engine bias is gated by the martingale invariant (§2e).
+- **Design fact for M4:** a 3% stop costs about 3.6 bps per trade on this hourly data before costs.
+
+## 2e. Martingale invariant and the stop-overshoot term (2026-10-03)
+
+Invariant (permanent: smoke test in the suite, powered run in CI via
+`scripts/verify_engine_martingale.py`): on a fat-tailed price martingale (Student-t ν = 3, 48 sub-steps
+per bar), zero fees, research slippage on, random entry may not make money through the engine. The gate
+is mean net ≤ +0.5 bps with stderr ≤ 0.3, at ~1M trades per configuration.
+
+First powered run, before the fix:
+- Net PASSED: −6.29 ± 0.25 bps with stops, −10.13 ± 0.29 without.
+- **Pre-cost was +3.76 ± 0.25 bps with stops** (t ≈ 15), against −0.04 ± 0.29 without.
+
+The engine filled intrabar stops exactly at the level, and the net gate passed only because the
+slippage, mostly the spread estimator's volatility bias on spread-free synthetic bars, exceeded the
+overshoot. That is the double-booking the advisor rejected, and the residual was far above 0.5 bps.
+So, per the ruling:
+- **Intrabar stops now fill `max(1 tick, k·σ_1h·price)` beyond the level, k = 0.2, frozen.**
+- k comes from the measurement (~14.9 bps per stop exit against σ_1h = 80 bps, i.e. 0.19), rounded
+  up. Not tuned on real data.
+- Gap stops still fill at the real open.
+- The pre-cost overshoot is now gated at +0.5 bps alongside net.
+
+---
+
 ## 3. Assumptions recorded in every result
 
 `BacktestResult.assumptions` carries all of these, so they travel with every number:
@@ -127,8 +206,10 @@ The targeted counter-example is the regression for defect 1.
 2. **Funding coverage covers 5 of 12 walk-forward instruments.** Mark/index 1h exist for 5 instruments.
    The other 7 have no funding before 2026-06-29, so the engine will refuse them. Fix: backfill mark/index
    for every walk-forward instrument (`--symbols-mark-index 20`).
+   **RESOLVED 2026-10-03:** mark/index 1h backfilled for all 20 instruments (600,249 joinable pairs). Funding before 2026-06-29 now comes from `funding-bound-v1` (§2c), not a model.
 3. **No 4h-funding ground truth for D1.** All 5 mark/index instruments are 8h. The 4h instruments need
    mark/index before the model can be validated on them.
+   **SUPERSEDED 2026-10-03:** the 4h instruments now have mark/index, but D1 failed on every class and was replaced by the bound (§2c).
 4. **Universe discrepancy.** `VENUE_FACTS.md` V-13 lists 3 instruments at 4h (CL, PUMP, TRUMP) and
    includes AAVE. The final M1 coverage report (2026-10-03 08:30) lists **4** at 4h (adds NIGHT) and no
    AAVE. The universe changed between measurements; V-13 has a dated note added.
@@ -136,6 +217,7 @@ The targeted counter-example is the regression for defect 1.
    read by the user from their OKX fee page), tick/lot/min size and MMR (public; probe in
    `scripts/recon_instrument_specs.py`, **whose field names are unverified**). The engine refuses
    UNMEASURED parameters outside tests.
+   **PARTLY RESOLVED 2026-10-03:** tick/lot/min size and tier-1 MMR are measured (`docs/instrument_specs.json`, probe field names verified against the raw response). Perp **fee** rates are still unmeasured (sign-off checklist).
 6. **Gap-repair tool** (carried forward from M1) is not built. Gaps stay quarantined and the engine
    cancels entries across them.
 7. **Sizer is provisional.** The real sizer is M5.
@@ -145,6 +227,13 @@ The targeted counter-example is the regression for defect 1.
    count matches the research log.
 9. **Simultaneous entries at one T_open** compete for margin in inst_id order. That is capacity
    allocation at one instant, deterministic, and not look-ahead, but it is an ordering choice.
+10. **2020–2022 spread regime is unmeasured.** The Abdi-Ranaldo estimate is the only historical spread
+    signal. M7 PAPER spread telemetry is the first real calibration point.
+11. **Tier-1 MMR only** (`docs/instrument_specs.json`). That understates maintenance margin above the
+    tier-1 size.
+12. **The backfill's summary line is misleading.** It compares manifest rows (OHLCV + funding, closed
+    months) with Parquet OHLCV rows (including the in-progress month). On 2026-10-03 that showed a
+    "244-row" difference which reconciles exactly (7,183 − 6,939). Not a data defect.
 
 ---
 
@@ -159,9 +248,11 @@ The targeted counter-example is the regression for defect 1.
 | Gate evaluator vs synthetic curves with known MaxDD/PF | **PASS** (exact boundaries at 15% and 1.5) |
 | Holdout test: research code reading the holdout raises | **PASS**. The boundary is not a parameter, and a lenient `FrozenGates` cannot be constructed. Direct Parquet access is a guard-scanned tripwire, not a sandbox |
 | Golden-fixture regression test | **PASS** (digest pinned) |
-| **Random entry on REAL data has negative expectancy after costs** | **BLOCKED**: needs data, measured specs, fee rates |
-| **D1 funding model validated on the realised overlap** | **BLOCKED**: needs data |
-| **P-11 weekly archive verified to have run** | **BLOCKED**: needs a persistent host |
+| **Random entry on REAL data has negative expectancy after costs** | Re-run pending, after the martingale invariant passes with the overshoot term (§2d, §2e). Must also pass at the low-fee sensitivity |
+| **D1 funding model validated on the realised overlap** | **FAILED → re-scoped** per ruling (§2c): `funding-bound-v1` in use; model validation is forward-only on P-11 data |
+| **Martingale invariant (engine cannot be generous on a martingale)** | Added by ruling (§2e); powered result recorded below when run |
+| **P-11 weekly archive verified to have run** | **USER**: the Windows task is installed; evidence it ran is still needed (`Get-ScheduledTaskInfo okxq-archive-funding` → LastTaskResult 0, plus new funding rows) |
+| **Measured perpetual-swap fee rates** | **USER**: read the perp maker/taker from the OKX account fee page with a date (or from the demo key's trade-fee endpoint at M6). Required for M2 sign-off and for any promotion |
 | Chief Advisor checkpoint 3 on the built code | **Done**: 10 defects, all addressed (§2b). A final M2 audit is still due after the blocked items run on real data |
 
 ### Once data is reachable, in order

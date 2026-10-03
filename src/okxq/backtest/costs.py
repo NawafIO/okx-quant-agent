@@ -26,9 +26,14 @@ RESEARCH_SLIPPAGE = SlippageModel(
     y_impact=Decimal(1),
     vol_lookback=24,
     spread_lookback=168,
+    # k = 0.2: measured overshoot ~14.9 bps per stop exit on a fat-tailed martingale at 48
+    # sub-steps, against sigma_1h = 80 bps -> 0.19, rounded UP. Chosen from that measurement
+    # and frozen; verified by scripts/verify_engine_martingale.py, never tuned on real data.
+    stop_overshoot_k=Decimal("0.2"),
     assumption_id=(
         "slip-v2: impact Y=1 UNCALIBRATED (square-root law on previous-bar volume); "
-        "half-spread Abdi-Ranaldo 2017 over 168 closed 1h bars, adverse-only, >= 1 tick"
+        "half-spread Abdi-Ranaldo 2017 over 168 closed 1h bars, adverse-only, >= 1 tick; "
+        "intrabar stops fill max(1 tick, 0.2 sigma_1h) beyond the level"
     ),
 )
 

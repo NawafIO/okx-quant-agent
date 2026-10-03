@@ -514,3 +514,39 @@ def test_slippage_spread_term_from_past_bars_only() -> None:
         Scripted({ts(4): [enter("90")]})
     )
     assert r.fills[0].slippage_cost == expected
+
+
+def test_intrabar_stop_fills_beyond_the_level_by_the_frozen_overshoot() -> None:
+    """Overshoot term (ruling 2026-10-03), by hand. vol lookback 2: at the stop bar the
+    closes are 110, 100, 100 -> log returns ln(100/110), 0 -> sample sd = |ln(1.1)|/sqrt(2).
+    overshoot = max(0.1, 95 * 0.2 * sd) rounded UP to the tick; then one tick of slippage."""
+    bars = series(
+        [
+            ("100", "101", "99", "100", "1000"),
+            ("100", "111", "99", "110", "1000"),
+            ("110", "111", "99", "100", "1000"),
+            ("100", "101", "99", "100", "1000"),  # entry fills at this open (100.1)
+            ("100", "101", "94", "96", "1000"),  # stop at 95 crossed intrabar
+            FLAT,
+        ]
+    )
+    sd = math.log(1.1) / math.sqrt(2)
+    overshoot = D(math.ceil(95 * 0.2 * sd / 0.1)) * D("0.1")
+    assert overshoot == D("1.3")
+    model = SlippageModel(D(0), 2, 0, "t", stop_overshoot_k=D("0.2"))
+    r = _slip_engine(bars, model, ts(2)).run(Scripted({ts(3): [enter("95")]}))
+    (t,) = r.trades
+    assert t.exit_reason == "stop"
+    assert t.avg_exit == D(95) - overshoot - D("0.1")
+
+
+def test_overshoot_does_not_apply_to_a_gap_stop() -> None:
+    """A gap through the stop already fills at the real (gapped) open."""
+    bars = series(
+        [*([("100", "101", "99", "100", "1000")] * 4), ("92", "93", "91", "92", "1000"), FLAT]
+    )
+    model = SlippageModel(D(0), 2, 0, "t", stop_overshoot_k=D("0.2"))
+    r = _slip_engine(bars, model, ts(2)).run(Scripted({ts(3): [enter("95")]}))
+    (t,) = r.trades
+    assert t.exit_reason == "stop_gap"
+    assert t.avg_exit == D("91.9")  # open 92 less one tick, no overshoot added

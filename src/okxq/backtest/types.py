@@ -83,6 +83,8 @@ class SlippageModel:
     vol_lookback: int
     spread_lookback: int
     assumption_id: str
+    #: Intrabar stop overshoot multiple of sigma_1h (0 disables; see engine._overshoot).
+    stop_overshoot_k: Decimal = Decimal(0)
 
 
 @dataclass(frozen=True)

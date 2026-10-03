@@ -378,7 +378,8 @@ class BacktestEngine:
             "sizer": self._sizer.sizer_id,
             "slippage": f"{c.slippage.assumption_id} y_impact={c.slippage.y_impact} "
             f"vol_lookback={c.slippage.vol_lookback} "
-            f"spread_lookback={c.slippage.spread_lookback}",
+            f"spread_lookback={c.slippage.spread_lookback} "
+            f"stop_overshoot_k={c.slippage.stop_overshoot_k}",
             "fees": f"maker={c.fees.maker} taker={c.fees.taker} ({c.fees.provenance})",
             "stress": f"fees={c.stress.fees} slippage={c.stress.slippage} "
             f"funding_paid={c.stress.funding_paid} funding_received={c.stress.funding_received}",
@@ -540,13 +541,7 @@ class BacktestEngine:
         """Adverse price offset for a taker fill at ``st.idx``, from data closed before it."""
         m = self._cfg.slippage
         s, i = st.series, st.idx
-        closes = s.close[max(0, i - m.vol_lookback - 1) : i]
-        rets = [math.log(float(b) / float(a)) for a, b in itertools.pairwise(closes)]
-        if len(rets) >= 2:
-            mu = math.fsum(rets) / len(rets)
-            sigma = math.sqrt(math.fsum((r - mu) ** 2 for r in rets) / (len(rets) - 1))
-        else:
-            sigma = 0.0
+        sigma = self._sigma(st)
         prev_vol = self._prev_volume(st)
         participation = float(qty / prev_vol) if prev_vol > 0 else 1.0
         impact = price * m.y_impact * Decimal(repr(sigma * math.sqrt(participation)))
@@ -563,6 +558,28 @@ class BacktestEngine:
         raw = max(tick, half_spread) + impact
         ticks = max(ONE, (raw / tick).to_integral_value(rounding=ROUND_CEILING))
         return ticks * tick * self._cfg.stress.slippage
+
+    def _sigma(self, st: _Inst) -> float:
+        """Sample std of the last ``vol_lookback`` close-to-close log returns, closed bars."""
+        closes = st.series.close[max(0, st.idx - self._cfg.slippage.vol_lookback - 1) : st.idx]
+        rets = [math.log(float(b) / float(a)) for a, b in itertools.pairwise(closes)]
+        if len(rets) < 2:
+            return 0.0
+        mu = math.fsum(rets) / len(rets)
+        return math.sqrt(math.fsum((r - mu) ** 2 for r in rets) / (len(rets) - 1))
+
+    def _overshoot(self, st: _Inst, level: Decimal) -> Decimal:
+        """Adverse distance an INTRABAR stop fills beyond its level (Chief Advisor ruling
+        2026-10-03): the powered martingale run measured +3.76 +/- 0.25 bps/trade of
+        optimism from filling exactly at the level (~15 bps per stop exit). Frozen, not
+        fitted: ``max(1 tick, k * sigma_1h * price)``, rounded up to the tick; k = 0 disables
+        it (synthetic hand-checked fixtures only). Gap stops already fill at the real open."""
+        k = self._cfg.slippage.stop_overshoot_k
+        if k <= 0:
+            return ZERO
+        tick = st.spec.tick_size
+        raw = max(tick, level * k * Decimal(repr(self._sigma(st))))
+        return (raw / tick).to_integral_value(rounding=ROUND_CEILING) * tick
 
     def _fee(self, notional: Decimal, maker: bool) -> Decimal:
         rate = self._cfg.fees.maker if maker else self._cfg.fees.taker
@@ -752,7 +769,8 @@ class BacktestEngine:
             if liq_hit and (liq_nearer or not stop_hit):
                 self._reduce(st, p.qty, liq, ts, liquidity="liquidation", reason="liquidation")
             else:
-                self._stop_exit(st, p.stop, ts, "stop")
+                beyond = p.stop - p.side.sign * self._overshoot(st, p.stop)
+                self._stop_exit(st, beyond, ts, "stop")
             return
         tp = p.take_profit
         if tp is not None:

@@ -5,8 +5,9 @@
 Gate: on a fat-tailed (Student-t nu=3) price martingale at 48 sub-steps per bar, with zero
 fees and the research slippage model ON, random entry must not make money through the
 engine: mean net <= +0.5 bps/trade with stderr <= 0.3 bps (>= ~1M trades), with a 3% stop
-AND with a stop that never triggers. Pre-cost (net + slippage) is REPORTED alongside: it is
-the stop-overshoot optimism the slippage would otherwise mask.
+AND with a stop that never triggers. The PRE-COST mean (net + slippage) is gated at the same
++0.5 bps: it is the stop-overshoot optimism that slippage would otherwise mask (first powered
+run, without the overshoot term: +3.76 +/- 0.25 bps with stops, -0.04 without).
 """
 
 import argparse
@@ -67,7 +68,11 @@ def main() -> int:
             f"slippage {pre_mu - res.mean_bps:.3f} bps/trade; stop exits {len(stops):,}"
             + (f" at mean {sum(stops) / len(stops):+.2f} bps" if stops else "")
         )
-        ok = ok and res.passed
+        pre_ok = pre_mu <= mg.POLICY.max_mean_bps
+        print(
+            f"    pre-cost gate <= +{mg.POLICY.max_mean_bps} bps -> {'PASS' if pre_ok else 'FAIL'}"
+        )
+        ok = ok and res.passed and pre_ok
     print("MARTINGALE INVARIANT:", "PASS" if ok else "FAIL")
     return 0 if ok else 1
 
