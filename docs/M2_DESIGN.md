@@ -248,9 +248,9 @@ So, per the ruling:
 | Gate evaluator vs synthetic curves with known MaxDD/PF | **PASS** (exact boundaries at 15% and 1.5) |
 | Holdout test: research code reading the holdout raises | **PASS**. The boundary is not a parameter, and a lenient `FrozenGates` cannot be constructed. Direct Parquet access is a guard-scanned tripwire, not a sandbox |
 | Golden-fixture regression test | **PASS** (digest pinned) |
-| **Random entry on REAL data has negative expectancy after costs** | Re-run pending, after the martingale invariant passes with the overshoot term (§2d, §2e). Must also pass at the low-fee sensitivity |
+| **Random entry on REAL data has negative expectancy after costs** | **PASS** (2026-10-03, `logs/sanity_random_v3.log`). 15 instruments, 3y to the holdout, 20 seeds, 193,490 trades at $1k. Net −56.2 ± 0.7 bps (user fees) and −46.2 ± 0.7 (low sensitivity). All 30 instrument/side cells lose. Costs reconcile exactly. Impact rises 8.5→167 bps across $1k→$10M. 0 sizing refusals. 44 liquidity outcomes, all on 2022-12-18 (VENUE_FACTS §9). Reported, not gated: pre-cost −11.0 ± 0.7 |
 | **D1 funding model validated on the realised overlap** | **FAILED → re-scoped** per ruling (§2c): `funding-bound-v1` in use; model validation is forward-only on P-11 data |
-| **Martingale invariant (engine cannot be generous on a martingale)** | Added by ruling (§2e); powered result recorded below when run |
+| **Martingale invariant (engine cannot be generous on a martingale)** | **PASS** with the k = 0.2 overshoot term, about 1M trades per configuration. 3% stop: net −10.27 ± 0.26, pre-cost −0.22 ± 0.26 bps. No stop: net −10.13 ± 0.29, pre-cost −0.04 ± 0.29. Independently PASS in CI run #21 |
 | **P-11 weekly archive verified to have run** | **USER**: the Windows task is installed; evidence it ran is still needed (`Get-ScheduledTaskInfo okxq-archive-funding` → LastTaskResult 0, plus new funding rows) |
 | **Measured perpetual-swap fee rates** | **USER**: read the perp maker/taker from the OKX account fee page with a date (or from the demo key's trade-fee endpoint at M6). Required for M2 sign-off and for any promotion |
 | Chief Advisor checkpoint 3 on the built code | **Done**: 10 defects, all addressed (§2b). A final M2 audit is still due after the blocked items run on real data |
