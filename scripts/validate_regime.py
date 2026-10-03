@@ -176,7 +176,8 @@ def main() -> int:
     a = ap.parse_args()
     which = a.risk or ("ETH" if a.open_sealed else "BTC")
     path, pinned = KEYS[which]
-    actual = hashlib.sha256(path.read_bytes()).hexdigest()
+    # LF-normalised: a Windows (CRLF) checkout must not read as an edited answer key.
+    actual = hashlib.sha256(path.read_bytes().replace(b"\r\n", b"\n")).hexdigest()
     if actual != pinned:
         print(f"REFUSED: {path.name} changed after pre-registration ({actual})")
         return 2

@@ -71,7 +71,8 @@ def mean_pairwise(rets: dict[str, dict[int, float]], names: list[str], keys: lis
 
 
 def main() -> int:
-    actual = hashlib.sha256(PREREG.read_bytes()).hexdigest()
+    # LF-normalised: a Windows (CRLF) checkout must not read as an edited pre-registration.
+    actual = hashlib.sha256(PREREG.read_bytes().replace(b"\r\n", b"\n")).hexdigest()
     if actual != PINNED:
         print(f"REFUSED: {PREREG.name} changed after pre-registration ({actual})")
         return 2

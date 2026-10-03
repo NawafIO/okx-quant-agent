@@ -46,9 +46,21 @@ def risk_sources() -> list[Path]:
 # --- coverage --------------------------------------------------------------------------------
 
 
+def _lf_sha256(raw: bytes) -> str:
+    """Hash with LF line endings: git checks text out as CRLF on Windows, which would
+    change the bytes but not the content being pinned."""
+    return hashlib.sha256(raw.replace(b"\r\n", b"\n")).hexdigest()
+
+
+def test_the_pin_holds_on_a_windows_crlf_checkout() -> None:
+    raw = (ROOT / ".coveragerc-risk").read_bytes().replace(b"\r\n", b"\n")
+    assert _lf_sha256(raw.replace(b"\n", b"\r\n")) == _lf_sha256(raw) == COVERAGERC_SHA256
+    assert _lf_sha256(raw + b"exclude_lines = pragma\n") != COVERAGERC_SHA256  # still bites
+
+
 def test_the_risk_coverage_config_is_pinned_and_excludes_nothing() -> None:
     raw = (ROOT / ".coveragerc-risk").read_bytes()
-    assert hashlib.sha256(raw).hexdigest() == COVERAGERC_SHA256
+    assert _lf_sha256(raw) == COVERAGERC_SHA256
     cfg = coverage.Coverage(config_file=str(ROOT / ".coveragerc-risk")).config
     assert cfg.exclude_list == []
     assert cfg.partial_list == []
