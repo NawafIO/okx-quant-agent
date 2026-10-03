@@ -6,8 +6,11 @@ traced to the 3% STOP RULE meeting real price dynamics (stops never hit: +0.17 +
 Engine bias is therefore tested only where the truth is known - the martingale invariant in
 :mod:`okxq.backtest.martingale` - and on real data this check tests COSTS:
 
-1. **No entry resized or refused** for margin, minimum size or liquidity (fixed notional;
-   starting equity sized so expected cumulative cost stays below 25% of it).
+1. **No entry degraded by sizing**: zero refusals for margin or minimum size (fixed notional;
+   starting equity sized so expected cumulative cost stays below 25% of it). LIQUIDITY
+   outcomes - an entry that found no volume, or a partial fill whose remainder expired - are
+   the engine behaving correctly, and are REPORTED on their own line, never dropped
+   (ruling 2026-10-03, after a venue halt on 2022-12-18 tripped the original definition).
 2. **Power**: >= ``min_trades`` pooled closed trades and a net standard error <=
    ``max_stderr_bps``.
 3. **Costs reconcile**: per-trade net = pre-cost - modelled cost, exactly.
@@ -27,6 +30,7 @@ import math
 from collections import defaultdict
 from collections.abc import Sequence
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from decimal import Decimal
 
 from okxq.backtest.engine import BacktestResult
@@ -42,7 +46,10 @@ POLICY = SanityPolicy()
 
 
 #: Rejections that mean an entry did not trade at its intended size.
-RESIZE_REASONS = frozenset({"insufficient_margin", "entry_remainder_expired", "entry_no_liquidity"})
+#: Refusals that mean SIZING degraded - what the gate exists to catch.
+SIZING_REASONS = frozenset({"insufficient_margin"})
+#: Liquidity outcomes - correct engine behaviour, reported but not gated.
+LIQUIDITY_REASONS = frozenset({"entry_remainder_expired", "entry_no_liquidity"})
 
 
 @dataclass(frozen=True)
@@ -106,20 +113,33 @@ def evaluate(
 ) -> SanityReport:
     """``size_ladder``: (notional per trade, mean taker slippage bps per fill), ascending."""
     checks: list[Check] = []
-    resized = [
+    degraded = [
         x
         for r in results
         for x in r.rejections
-        if x.reason in RESIZE_REASONS or x.reason.startswith("sizer:")
+        if x.reason in SIZING_REASONS or x.reason.startswith("sizer:")
     ]
+    liquidity = [x for r in results for x in r.rejections if x.reason in LIQUIDITY_REASONS]
     finals = [r.equity_curve[-1].equity for r in results if r.equity_curve]
     checks.append(
         Check(
-            "no entry resized or refused",
-            not resized and bool(finals),
-            f"{len(resized)} resized/refused entries; final equity "
+            "no entry degraded by sizing",
+            not degraded and bool(finals),
+            f"{len(degraded)} margin/min-size refusals; final equity "
             f"{min(finals) if finals else 'n/a'} .. {max(finals) if finals else 'n/a'} "
             f"(start {initial_equity})",
+        )
+    )
+    days = sorted(
+        {datetime.fromtimestamp(x.ts_ms / 1000, tz=UTC).date().isoformat() for x in liquidity}
+    )
+    checks.append(
+        Check(
+            "liquidity outcomes (reported, not gated)",
+            True,
+            f"{len(liquidity)} entries found no volume or expired partly filled; "
+            f"instruments {sorted({x.inst_id for x in liquidity})}; days {days}",
+            gated=False,
         )
     )
 

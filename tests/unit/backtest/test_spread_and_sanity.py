@@ -101,11 +101,23 @@ def test_too_few_trades_fails_on_power() -> None:
     assert {c.name for c in rep.checks if not c.passed} == {"power"}
 
 
-def test_a_resized_or_refused_entry_fails() -> None:
-    for reason in ("insufficient_margin", "sizer:below_min_size", "entry_remainder_expired"):
+def test_a_sizing_refusal_fails_the_gate() -> None:
+    for reason in ("insufficient_margin", "sizer:below_min_size"):
         r = with_rejection(result(symmetric()), reason)
         rep = sanity.evaluate([r], D(100000), LADDER, FAIR)
-        assert {c.name for c in rep.checks if not c.passed} == {"no entry resized or refused"}
+        assert {c.name for c in rep.checks if not c.passed} == {"no entry degraded by sizing"}
+
+
+def test_liquidity_outcomes_are_reported_not_gated() -> None:
+    """Ruling: no volume -> no fill is the engine being right; report it, never drop it."""
+    for reason in ("entry_no_liquidity", "entry_remainder_expired"):
+        rep = sanity.evaluate(
+            [with_rejection(result(symmetric()), reason)], D(100000), LADDER, FAIR
+        )
+        assert rep.passed
+        (line,) = [c for c in rep.checks if c.name.startswith("liquidity outcomes")]
+        assert not line.gated
+        assert line.detail.startswith("1 entries")
 
 
 def test_real_data_pre_cost_is_reported_not_gated() -> None:

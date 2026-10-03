@@ -155,8 +155,9 @@ def test_funding_pipeline_end_to_end(
     out = capsys.readouterr().out
     assert "[FAIL] power" in out
     # The fixture's bars carry 5 units of volume, so every $1,000 entry is cut by the
-    # participation cap: the resizing tripwire must catch it.
-    assert "[FAIL] no entry resized or refused" in out
+    # participation cap: a LIQUIDITY outcome, reported on its own line, not a sizing failure.
+    assert "[PASS] no entry degraded by sizing" in out
+    assert "liquidity outcomes (reported, not gated): 86 entries" in out
     # The size ladder must show impact rising once the participation cap cannot bind.
     assert "[PASS] impact is live" in out
 

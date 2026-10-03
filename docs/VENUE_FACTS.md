@@ -265,3 +265,23 @@ an ad-hoc local install.
 
 Per architecture **T-2**, any indicator we implement ourselves is still validated against TA-Lib as
 the reference at M3, and every indicator must pass the **T-1** no-look-ahead property test.
+
+---
+
+## 9. Zero-volume flat bars - observed 2026-10-03 (M2)
+
+Measured on the full 7-year backfill: **91 hourly last-price bars with zero volume, in 23
+instrument-days, every one of them flat** (open = high = low = close). Isolated single hours on
+newly listed instruments, plus one cluster:
+
+| Date (UTC) | Hours | Instruments | Bars |
+|---|---|---|---|
+| **2022-12-18** | 09:00-17:00 | 8 (BTC, ETH, SOL, XRP, NEAR, UNI, DOGE, SAND) | 72 |
+
+**Interpretation: a venue-wide trading halt is likely, NOT verified** against an external record.
+
+Treatment (Chief Advisor ruling): the bars stay in the store as published. "Quarantine, never
+repair" cuts both ways: relabelling observed bars as gaps because they are inconvenient would be
+a repair. The engine already treats them pessimistically. With no volume nothing fills (the
+participation cap is a share of the previous bar's volume), and open exposure persists through
+them. Backtests report such entries as liquidity outcomes rather than hiding them.

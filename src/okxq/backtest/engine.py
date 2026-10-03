@@ -603,13 +603,16 @@ class BacktestEngine:
             if not contiguous:
                 self._reject(t_open, s.inst_id, "entry_cancelled_data_gap")
                 continue
+            logged = len(self._rejections)
             filled = self._market_entry(st, order, t_open)
             remaining = order.qty - filled
             if remaining > 0 and order.ttl > 1:
                 order.qty, order.ttl = remaining, order.ttl - 1
                 order.expected_open_ms = t_open + s.timeframe_ms
                 keep.append(order)
-            elif remaining > 0:
+            elif remaining > 0 and len(self._rejections) == logged:
+                # One event, one record: if this attempt was already rejected with its
+                # specific reason (no liquidity, margin, ...), expiry is not a second event.
                 self._reject(t_open, s.inst_id, "entry_remainder_expired")
         st.pending = keep
 

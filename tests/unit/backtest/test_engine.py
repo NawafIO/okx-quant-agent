@@ -550,3 +550,13 @@ def test_overshoot_does_not_apply_to_a_gap_stop() -> None:
     (t,) = r.trades
     assert t.exit_reason == "stop_gap"
     assert t.avg_exit == D("91.9")  # open 92 less one tick, no overshoot added
+
+
+def test_an_entry_with_no_liquidity_is_one_event_one_record() -> None:
+    """Ruling 2026-10-03: a no-volume refusal is not ALSO logged as an expired remainder."""
+    dead = ("100", "100", "100", "100", "0")
+    s = series([FLAT, FLAT, dead, FLAT, FLAT])  # bar 3's open is capped by bar 2's volume 0
+    r = engine(s, start=ts(1), end=ts(5), participation_cap="0.1").run(
+        Scripted({ts(3): [enter("90")]})
+    )
+    assert [x.reason for x in r.rejections] == ["entry_no_liquidity"]
