@@ -6,10 +6,12 @@
 secrets/
 
 # --- per-environment runtime state (architecture §20.1) ---------------------
-state/
-data/
-audit/
-logs/
+# Anchored to the repo root. Unanchored, these also matched src/okxq/data/ and
+# src/okxq/audit/, so the M1 pipeline and the M0 audit chain were never committed.
+/state/
+/data/
+/audit/
+/logs/
 
 # --- python -----------------------------------------------------------------
 __pycache__/
