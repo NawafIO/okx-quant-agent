@@ -34,6 +34,8 @@ FORBIDDEN_NAMES = {
     "okxq.backtest": {"holdout", "trials"},
     # Constructing gates is pinned anyway; importing the class has no research use.
     "okxq.backtest.gates": {"FrozenGates", "PINNED_GATES_SHA256"},
+    # Regime labels come only from the pinned classify(); thresholds are not a strategy knob.
+    "okxq.analysis.regime": {"classify_with", "RegimeParams", "FrozenRegime"},
 }
 WHOLE_MODULE_FORBIDDEN = {"okxq.backtest.holdout", "okxq.backtest.trials"}
 
