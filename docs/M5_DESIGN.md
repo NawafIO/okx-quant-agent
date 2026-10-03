@@ -1,6 +1,6 @@
 # M5 design: Risk Engine + Portfolio Manager + Kill Switch (PLAN, for Chief Advisor review)
 
-Status: **PLAN. Nothing is built until the advisor rules.** Scope: roadmap M5, architecture §13, §14 and §19.3. Pure, offline, no network, no credentials. Phase stays 2; no LIVE path is touched.
+Status: **PLAN, revision 1** after Chief Advisor checkpoint 1 (PROCEED WITH CHANGES; §11 lists every change). Nothing built yet. Scope: roadmap M5, architecture §13, §14 and §19.3. Pure, offline, no network, no credentials. Phase stays 2; no LIVE path is touched.
 
 ## 0. Constraints carried in
 
@@ -116,9 +116,17 @@ R-8 E4 found that crypto co-moves more under stress: in the worst month, the ful
 ## 8. Kill switch (§19.3)
 
 - **State:** `state/<env>/killswitch.json`, written atomically (tmp + fsync + rename). The **sentinel** is `state/<env>/KILL`; its mere existence engages the switch, so it works with the process wedged and is checked on every `engaged()` call.
-- **`engaged()` is True if** the sentinel exists, OR the state says engaged, OR the state file is missing and the profile is armed by default (LIVE), OR the state is unreadable or malformed (**fail-safe**).
+- **`engaged()` is derived from the hash-chained audit log.** The JSON file is only a cache.
+  - The switch reads as disengaged **only if** the latest kill-switch record on a verified chain is an audited `killswitch_disarm`. Every other case reads as engaged: no kill-switch record yet (first boot, fresh clone, rebuilt container), a broken chain, an unreadable chain, or an unreadable or disagreeing cache.
+  - **A lost `state/` or `audit/` directory therefore engages the switch.** Writing `{"engaged": false}` into the cache does nothing.
+  - The sentinel is checked with `os.stat`. Only `FileNotFoundError` means "absent"; every other OSError reads as engaged.
+  - Directory fsync after each atomic write (POSIX).
 - **`engage(trigger, snapshot)`** persists the switch and appends the trigger and snapshot to the audit chain. It is idempotent.
-- **`disarm(operator, typed_confirmation, reason)`** is manual only. The confirmation must equal the exact phrase `DISARM <env>`. Disarming is audited. **No code path disarms automatically**: an AST guard forbids calls to `disarm` outside the CLI module.
+- **`disarm(operator, typed_confirmation, reason)`** is manual only.
+  - The confirmation must equal `DISARM <env>`, typed at an **interactive terminal** (`stdin.isatty()`).
+  - Disarming appends the audit record that `engaged()` requires.
+  - **No code path disarms automatically:** an AST guard forbids calls to `disarm` outside the CLI module, and also forbids `getattr`/string access to `disarm` in `okxq`.
+  - **Recorded as weak:** an LLM agent with shell and a pseudo-terminal could still type the phrase. §1.2 says LLMs may not arm or disarm; that rule is enforced by keeping the agent away from LIVE operations (Layer 1, no LIVE credential), not by this check.
 - **Actions in M5:** block entries (RC-01). The order cancel and flatten actions need execution; they are **interfaces only** (`KillActions` protocol) until M6.
 - **Tests:**
   - each trigger engages;
@@ -126,7 +134,9 @@ R-8 E4 found that crypto co-moves more under stress: in the worst month, the ful
   - an unreadable or garbage state file reads as engaged;
   - a sentinel overrides a disengaged state;
   - disarm with a wrong phrase is refused;
-  - LIVE with no state file reads as engaged.
+  - any env with no kill-switch audit record reads as engaged;
+  - a cache edited to `{"engaged": false}` without an audited disarm reads as engaged;
+  - a sentinel `stat` that raises `PermissionError` reads as engaged.
 
 ## 9. Acceptance mapping and enforcement
 
@@ -156,3 +166,71 @@ R-8 E4 found that crypto co-moves more under stress: in the worst month, the ful
 3. Is the Portfolio Manager scope split (§7) acceptable?
 4. M5 is not wired into research. A later research cycle that runs under the risk engine (heat, cluster cap, max positions) would be a sizing-model change: a new pinned config and new trials. Confirm that it is out of M5.
 5. Is anything that §13, §14, §19.3 or the M5 acceptance require missing?
+
+## 11. Revision 1: Chief Advisor checkpoint 1 (PROCEED WITH CHANGES)
+
+### Blocking findings, all accepted
+
+**B-1. Halts latch and run every cycle, not only when a signal arrives.**
+- A pure `halt_triggers(portfolio_state, policy) -> tuple[Halt, ...]` covers RC-10 (day loss ≥ 2%) and RC-11 (drawdown ≥ 10%).
+- `cycle.on_mark(state)` calls it on **every mark update**. It engages the kill switch, and **only a manual disarm releases it**: a recovered loss never resumes trading.
+- `cycle.decide(...)` returns a typed `Decision(proposal, halts)`. No halt is carried as a string.
+- If the engage write fails, entries are blocked in memory and the process exits non-zero.
+- `cycle` is inside the 100% coverage set; its I/O goes through an injected `KillSwitch` protocol.
+
+**B-2. The kill switch cannot disarm silently.** §8 is rewritten:
+- the switch is derived from the audit log;
+- a missing state reads as engaged in every env;
+- the sentinel is read with `os.stat`;
+- directory fsync;
+- interactive disarm, with the remaining weakness recorded.
+
+**B-3. A proposal cannot be APPROVED with a failed check.**
+- **A `model_validator` on `TradeProposal`, in its own reviewed contract commit:**
+  - APPROVED needs check IDs equal to the pinned `REQUIRED_CHECKS`, all passed, qty > 0, risk_pct ≤ 0.005 and leverage ≤ 3;
+  - REJECTED needs qty 0.
+- A guard bans `model_construct` and `model_copy(update=` on contracts across `okxq`.
+- `proposal_id` is a **uuid5** over the canonical (signal, bar, policy sha) inputs: deterministic, and it deduplicates the same signal on the same bar.
+- `expires_at` is the snapshot's cycle time plus `proposal_ttl_s`, never the clock.
+- **The HMAC is M6** (it needs a secret). M5 defines its canonical payload, plus a test that a proposal with `hmac == ""` is never executable by the M6 entry contract (a stub until then).
+
+**B-4. 100% branch coverage cannot be faked.**
+- A dedicated coverage config for `okxq.risk` (`.coveragerc-risk`), with **no `exclude_lines`, no omit, and `partial_branches` emptied**. A guard pins its SHA-256.
+- The measured set equals the package minus a **named, pinned** I/O list (`killswitch.py` and the persistence adapter, each tested separately).
+- An AST guard bans `assert`, `pragma`, `TYPE_CHECKING`, `type: ignore` and `noqa` in `okxq.risk`.
+- "Should be unreachable" branches, such as actual_risk > risk_capital, are explicit REJECTs, reached by a test that injects values.
+
+### Should-fix findings, all accepted
+
+- **Bypass.** `evaluate` takes no policy and binds the frozen policy, re-verifying its hash on every call. `REQUIRED_CHECKS` is pinned separately from `BATTERY`, and every proposal must carry exactly that set (the contract validator). Property test: `evaluate` never raises, for any input. The RC-12 sub-checks get unique IDs (RC-12a..f).
+- **RC-01.** `kill_switch_engaged` is a required snapshot field with no default. Snapshots come only from `snapshot.build(...)`, which calls `engaged()` fresh each cycle. M6's execution entry re-checks the switch independently.
+- **Decimal.** A local context with precision 50 (the V-12 lesson), with the size division under `ROUND_FLOOR`. Hypothesis strategies include signalling NaN, −0 and extreme exponents.
+- **`max_size` is unmeasured,** so a missing value means REJECT until it is measured (an M6 venue fact).
+- **Qualitative.** The regime label is checked for symbol, env and age (one daily bar plus grace). **A missing or stale deterministic regime label means REJECT** (default deny), and missing sentiment means neutral (per §13.4). The monotonicity property test is the real guarantee; the AST name guard is secondary.
+- **Equity basis.** Frozen per cycle: realised equity plus unrealised **losses only** (unrealised gains excluded).
+  - The strategy's requested risk **equals** the policy ceiling. Signal has no risk field and conviction never scales size.
+  - A missing high-water mark or day-open equity on restart means REJECT; they never reset to current equity.
+  - **Open risk** is mark-to-stop: qty × (mark − stop) × side, floored at 0.
+- **Liquidation.** Use the **more conservative** (closer to entry) of the backtest engine's exact isolated-margin formula (`engine.py:178`) and `entry·(1 ∓ 1/lev ± mmr)`. The tier-1 mmr understates maintenance margin above tier 1 (M2 open issue 11); this is recorded.
+- **Policy additions, all under the pin:**
+  - `entry_price_tolerance` for re-validation at execution (§19.2 control 5);
+  - the ATR definition behind `min_stop_atr`: Wilder ATR(14) on 1h bars;
+  - the **cluster map**, hashed into the policy. An unmapped symbol means REJECT.
+- **Audit.** Every proposal, APPROVED or REJECTED, is appended to the audit chain by `cycle`.
+- **§20.1 deviation, recorded.** Kill-switch state lives in the audit chain plus a JSON cache, not SQLite. The audit chain is the stronger store: hash-chained and append-only.
+- **Portfolio Manager.** A data-only `StopMoved` event, so open risk stays correct once trailing stops arrive in M6.
+
+### Disagreement, recorded
+
+**Contract-unit sizing.** The advisor asked for sizing in contracts via the contract value. M5 keeps **base units**:
+- M2 finding A-10 adopted base units because the contract value is unmeasured.
+- `lot_size_base` and `min_size_base` were measured in base units, so ROUND_FLOOR to the base lot is exact.
+- Sizing on an unmeasured contract value would be worse than sizing in base units.
+- The conversion to contracts belongs to **M6's adapter**. It must use ROUND_FLOOR and **REJECT any instrument whose contract value is unmeasured**, with an M6 acceptance test.
+
+### Rulings recorded (§10)
+
+- **Q1.** Open values are set from first principles, never from strategy behaviour. Venue-derived values (tick floor, staleness grace) come from measurement. Everything goes under the pin.
+- **Q2.** The CRISIS block is implemented as specified. It only reduces risk, rests on a label that failed validation (recorded), and does not spend the M3 tripwire.
+- **Q3.** The Portfolio Manager split is accepted, with `StopMoved` added.
+- **Q4.** The risk engine is not wired into research in M5. **Recorded for later:** before any holdout read, a candidate must be re-run under the risk-engine configuration (heat, cluster cap, max positions) as new trials. Otherwise the single holdout read tests a system that cannot be operated.
