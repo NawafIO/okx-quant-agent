@@ -51,6 +51,11 @@ jobs:
         # holds, failing the job, and exits 0 if network tests do exist. Verified locally.
         run: uv run pytest -m "not network" --cov --cov-report=term-missing --cov-report=xml
 
+      - name: Risk Engine 100% branch coverage (M5 acceptance, not negotiable)
+        # Its own coverage config with NO exclusions (.coveragerc-risk). This exact command
+        # is pinned by tests/guards/test_risk_enforcement.py.
+        run: uv run pytest tests/unit/risk tests/guards/test_risk_policy_frozen.py -p no:cacheprovider --cov=okxq.risk --cov-config=.coveragerc-risk --cov-branch --cov-fail-under=100 --cov-report=term-missing
+
       - name: Engine martingale invariant (powered, M2 acceptance)
         # Chief Advisor ruling 2026-10-03: no strategy may make money through the engine on
         # a fat-tailed price martingale, net of its own modelled slippage - the only test that

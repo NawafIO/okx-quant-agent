@@ -1,0 +1,16 @@
+# Coverage for okxq.risk - roadmap M5: "100% branch coverage on the Risk Engine. Not
+# negotiable." NO exclusions of any kind. The empty exclude_lines, partial_branches and
+# partial_branches_always REPLACE coverage's defaults, which would otherwise skip
+# "pragma: no cover", "pragma: no branch" and constant "if True:" / "while 1:" branches.
+# There is no omit. Pinned by tests/guards/test_risk_enforcement.py, which also pins the
+# CI and scripts/verify.ps1 invocations (--cov-branch --cov-fail-under=100).
+[run]
+branch = True
+source = okxq.risk
+
+[report]
+fail_under = 100
+show_missing = True
+exclude_lines =
+partial_branches =
+partial_branches_always =

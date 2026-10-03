@@ -50,4 +50,10 @@ if ($SkipCoverage) {
     )
 }
 
+# Not skippable by -SkipCoverage: M5's 100% branch coverage is an acceptance criterion, not a
+# report. This exact argument list is pinned by tests/guards/test_risk_enforcement.py.
+Invoke-Step 'Risk Engine 100% branch coverage (M5)' @(
+    '-m', 'pytest', 'tests/unit/risk', 'tests/guards/test_risk_policy_frozen.py', '-p', 'no:cacheprovider', '--cov=okxq.risk', '--cov-config=.coveragerc-risk', '--cov-branch', '--cov-fail-under=100', '--cov-report=term-missing'
+)
+
 Write-Host "`nALL CHECKS PASSED" -ForegroundColor Green
