@@ -52,11 +52,11 @@ Advisor review of 7ae7250: **PROCEED WITH CHANGES** (§8). The four blocking fin
 | RC-05..RC-08 | yes | M5 functions; cluster CRYPTO, so **at most 3 full-size positions** |
 | RC-09 | already enforced | `already_positioned`, `entry_already_pending` |
 | RC-10, RC-11 | yes | halts below |
-| RC-12a..f | yes | M5 functions (3×, margin, liquidation ≥ 1.5× stop distance) |
+| RC-12a..f | yes | M5 functions (3×, margin, liquidation ≥ 1.5× stop distance). RC-12e's max size is `maxMktSz × ctVal` from `docs/instrument_specs.raw.json` (MEASURED 2026-10-03), applied to every year. [Guessing] Historical limits may have differed. In base units: BTC 350, ETH 9,000, SOL 39,000, NEAR 78,000, UNI 32,000, SAND 430,000, XRP 1.6M, DOGE 24M. It can bind at 300k notional only where the price is low, e.g. NEAR near $2.5; RC-12e refusals are reported |
 | RC-13 3-loss cooldown 24 h | yes | from closed-trade outcomes |
 | RC-14 ≤ 3 entries per hour | yes | at most 3 entries per decision bar |
 | RC-15 API breaker | N/A | no venue |
-| RC-16 | CRISIS yes, sentiment N/A | regime from daily bars closed before T. M5 Q2 ruled that the block stays, with the label's FAIL recorded |
+| RC-16 | CRISIS yes, sentiment N/A | regime from daily bars closed before T. M5 Q2 ruled that the block stays, with the label's FAIL recorded. With no label yet (classifier warm-up), M5 rejects, so the first folds lose entries; the count is reported |
 
 **Halts (advisor ruling on Q1).**
 - **RC-11:** the high-water mark is carried **across the stitched OOS folds**, and a ≥ 10% drawdown latches **permanently**: no entries for the rest of the run. Live, nothing resets the high-water mark, so this is not harsher than live; it is live.
@@ -149,8 +149,8 @@ Expected N after cycle 2, without a baseline re-run: about 1,530 plus the window
 | finding | disposition |
 |---|---|
 | B-1: the clock window escapes G-6 (`entry_lead_h` rounds back to itself; `gates.py` only reports unperturbable parameters) | Window-shift check pre-registered in intraday_momentum.md |
-| B-2: warmup of 48 bars cannot hold σ at −20% warmup; Wilder ATR(24) unconverged | warmup_bars 480, rationale updated |
-| B-3: D3 departed from M5 (fill-to-stop, plain equity, no SZ-2/3, lenient RC-11, a dead RC-10) | §2 rewritten to M5's semantics |
+| B-2: warmup of 48 bars cannot hold σ at −20% warmup; Wilder ATR(24) unconverged | First fix (Wilder, warmup 480) **rejected** at the confirmation round: still about 1e-6 off with an exact-equality test. Second fix, the advisor's preferred option: simple-mean ATR, warmup 96, convergence test pre-registered as passing at the +20% / −20% corner |
+| B-3: D3 departed from M5 (fill-to-stop, plain equity, no SZ-2/3, lenient RC-11, a dead RC-10) | §2 rewritten to M5's semantics. Confirmation round: RC-12e would refuse every entry with max size unset; fed from the M2-measured `maxMktSz` |
 | B-4: replacing the owner's re-run is the owner's decision | §0 |
 | Collector: global ok; non-integer seqId crashed the run | Fixed, with tests: per-instrument judgement; seqId → BookError gap line |
 | Collector: Windows paths unverified | The 14-day clock waits for the owner's `-Status` evidence |

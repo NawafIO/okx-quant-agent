@@ -25,11 +25,11 @@
 
 - **Signal.**
   - `r_first = ln(close / open)` of the 1h bar opening at 00:00 UTC that day.
-  - `σ` is the sample standard deviation of the `sigma_n` hourly log returns of the bars closed by 01:00 that day.
+  - `σ` is the sample standard deviation (ddof = 1) of the `sigma_n` close-to-close hourly log returns `ln(close_t / close_t−1)` whose bar t closed by 01:00 that day; the last is the 00:00 bar.
   - The signal is active if `|r_first| > k·σ`. With k = 0, any nonzero `r_first` qualifies.
 - **Entry.** At decision time T = 00:00 − `entry_lead_h` hours (22:00 at the default), enter in the direction of `r_first`. The entry fills at the open of the bar starting at T.
 - **Exit.** One bar later: decided at T + 1 h, filled at that bar's open (23:00 at the default). The hold is one hour, with no settlement inside it.
-- **Stop.** `stop_atr` × Wilder ATR_1h(`atr_n`) from the entry reference.
+- **Stop.** `stop_atr` × ATR_1h(`atr_n`) from the entry reference. **ATR is the simple mean of the last `atr_n` true ranges**, not Wilder's smoothing: finite memory, so it is exact after `atr_n` + 1 bars under every perturbation (advisor B-2).
 - **Target.** `target_atr` × ATR. This is a contract formality, because the Signal contract requires a take-profit. If G-6 shows it binding, that is recorded.
 - **Priority** (declared here, so pinned with the code version; CYCLE2_DESIGN §2): `|r_first| / σ`. Ties break by the hash shuffle. Under the cluster cap, the 3 strongest signals enter.
 
@@ -45,15 +45,17 @@ Every constant is declared; G-6 perturbs each by ±20%.
 | k | 0.5 | 0, 0.5 |
 | stop_atr | 2.0 | 1.0, 2.0 |
 | target_atr | 4.0 | — |
-| warmup_bars | 480 (20 days) | — |
+| warmup_bars | 96 (4 days) | — |
 
 The grid is 4 configurations.
 
-**Warmup (fixes B-2).** It must cover every parameter at +20% while the warmup itself is at −20%.
-- σ at the 22:00 decision with sigma_n × 1.2 = 29 needs the bars back to about 20:00 the previous day, about 51 bars.
-- Wilder ATR with atr_n × 1.2 = 29 needs about 10 × 29 = 290 bars to converge.
-- The warmup at × 0.8 is 384 bars, which covers both.
-- The strict-xfail test from the M4 closing audit ("decisions from the bounded buffer equal decisions from full history") is applied to this strategy before it runs.
+**Warmup (fixes B-2, second attempt).** It must cover every parameter at +20% while the warmup itself is at −20%.
+- The first fix (Wilder ATR, warmup 480) was rejected. Wilder's oldest-bar weight (1 − 1/n)^m is still about 1e-6 at n = 29, m = 384, so stops differ in their low digits, and the convergence test compares them exactly.
+- Hence the simple-mean ATR. Requirements:
+  - σ at the 22:00 decision with sigma_n × 1.2 = 29 needs the bars from 19:00 two days back (29 returns, so 30 closes ending at the 00:00 bar) through 21:00 today: 51 bars;
+  - ATR with atr_n × 1.2 = 29 needs 30 bars.
+- The warmup at × 0.8 is 77 bars, which covers both.
+- **Pre-registered test.** `test_decisions_at_warmup_equal_decisions_at_twice_warmup` runs as a **passing** test (not an xfail) for this strategy at the defaults, **and** at atr_n × 1.2 and sigma_n × 1.2 with warmup × 0.8.
 
 **Clock window: the pre-registered window-shift check (fixes B-1, advisor ruling).**
 - `entry_lead_h` = 2 rounds back to 2 at ±20%, so G-6 reports it as unperturbable and does not test it. The window is the hypothesis's main choice, so it is tested separately.
@@ -72,6 +74,21 @@ The grid is 4 configurations.
   - an RC-11 halt ends the run.
 - **Range 1,000–5,700. I am not offering a point estimate**, because RC-13's effect depends on the outcome being tested.
 - **G-8 caveat.** The strategy is flat 23 of 24 hours, so its per-bar returns are mostly zeros, with extreme kurtosis. [Likely] The deflated Sharpe will be pushed down whatever the edge. A G-8 failure here is partly structural.
+
+## Feasibility computation (pre-registered; runs only after this file's hash is pinned)
+
+- **Data.** Research door only: 1h bars of the 8 members, 2020-07-01 up to the holdout start.
+- **Days.** A UTC day counts for an instrument when its 00:00 bar, the 24 bars before it, and its 22:00 and 23:00 bars are all present (no gaps).
+- **Late move.** `|ln(open_23:00 / open_22:00)|`: the fill-to-fill move of the trade, ignoring direction.
+- **E|r|, two ways, per instrument:**
+  - E_u: mean over all counted days;
+  - E_k: mean over the days with `|r_first| > 0.5·σ` (σ as in the rules, sigma_n = 24). This uses the size of the 00:00 move, never its sign.
+- **Break-even hit rate.** `p* = ½ + c / (2·E)`.
+  - Fees-only bound: c = 0.0010 (2 × 0.05% taker).
+  - Full check: c = 0.0010 + 2 × the calibrated half-spread, once the cycle-2 config is pinned.
+- **Rule.** Let M_u and M_k be the medians of p* across the 8 instruments for each E. If **min(M_u, M_k) > 0.55**, the candidate is DISCARDED on feasibility and no trials run.
+- **Recorded on the PAPER audit chain:** E_u, E_k, p* per instrument, M_u, M_k, the verdict, and this file's hash.
+- **Also reported, signal-free:** the share of daily base volume by UTC hour: the mean over every instrument-day with all 24 bars present and nonzero total volume.
 
 ## Cost: where I expect it to die
 
