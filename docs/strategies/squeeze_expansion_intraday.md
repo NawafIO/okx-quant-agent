@@ -1,4 +1,6 @@
-# squeeze_expansion_intraday: rationale (DRAFT, not pinned; Track 1)
+# squeeze_expansion_intraday: STOPPED (advisor B-3, review of f78d051); not to be pinned or run
+
+> **STOPPED.** The case for re-testing this family rested on a false premise: that funding dominated M4's loss. In the M4 run, funding was −31.0k of −73.2k; fees were −31.2k and slippage −25.2k; gross before slippage was only +14.2k. Without funding it still loses about −42k. This would be the family's last grid, and that evidence does not justify spending it. See CYCLE2_DESIGN §9.6. The draft below is kept for the record, **including its false sentence**.
 
 **Status:** draft for advisor review. **Family question first:** this is a Bollinger squeeze → band breakout, the **same signal family as M4's vol_compression_breakout** (cycle-1 grid 1, DISCARDED; most of its loss, −25.5k of −31.0k in funding, was SAND short funding). Under the two-grids-per-family rule this would be that family's **second and last grid**. That needs advisor sign-off, and I recommend **holding it** behind session_orb and impulse_continuation.
 

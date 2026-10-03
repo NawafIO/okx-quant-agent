@@ -1,6 +1,6 @@
 # impulse_continuation: rationale (DRAFT, not pinned; Track 1, grid 1 of at most 2)
 
-**Status:** draft for advisor review. **The direction is the open question:** the crypto literature reports **both** intraday momentum and intraday reversal. This candidate pre-registers **continuation**. If reversal is the truth it fails, and flipping the sign afterwards is a new hypothesis and a new grid, never a fix.
+**Status:** Revision 1, after the advisor's review of f78d051 (PROCEED WITH CHANGES). Not yet pinned. **The direction is the open question:** the crypto literature reports **both** intraday momentum and intraday reversal. This candidate pre-registers **continuation**. If reversal is the truth it fails, and flipping the sign afterwards is a new hypothesis and a new grid, never a fix.
 
 ## Hypothesis and evidence
 
@@ -9,7 +9,7 @@
   - liquidation cascades on leveraged perpetuals.
 - Evidence, from abstracts only:
   - Wen, Bouri, Xu & Zhao (2022, NAJEF 62, 101733): intraday crypto predictability includes **both momentum and reversal**, with price jumps and liquidity mattering.
-  - Shen, Urquhart & Wang (2022, Financial Review): BTC intraday momentum is strongest in high-volume, high-volatility sessions.
+  - Shen, Urquhart & Wang (2022, Financial Review): BTC intraday momentum is strongest in high-volume, high-volatility sessions. **This is session momentum, not post-impulse continuation**, so it is only indirect support (advisor).
 - [Guessing] Continuation after volume-confirmed impulses is plausible, and reversal after impulses on low volume (exhaustion) is equally plausible. The volume filter is the hypothesis's bet on which is which.
 
 ## Rules (1h bars)
@@ -26,7 +26,7 @@
 | param | default | grid |
 |---|---|---|
 | z | 2.5 | 2.0, 3.0 |
-| target_atr | 3.0 | 2.0, 3.0 |
+| target_atr | 2.0 | 1.5, 2.0 |
 | v | 2.0 | — |
 | sigma_n | 24 | — |
 | vol_n | 24 | — |
@@ -35,6 +35,12 @@
 | warmup_bars | 96 | — |
 
 **Warmup.** σ, volume and ATR windows at × 1.2 need 30 bars, and 96 × 0.8 = 77, which covers them.
+
+**Estimated exit mix** (signal-free, driftless model, §9.2a; holds up to 6 h):
+- target 1.5 ATR: about 45–49% stop / 26–29% target / 22–29% time;
+- target 2.0 ATR: about 45–49% / 14–17% / 33–41%.
+
+An entry right after an impulse bar sits in elevated volatility. The SMA-ATR bracket lags it, so [Likely] stops are hit **more** often than this model says. The baseline will show it.
 
 ## Expected trades
 
