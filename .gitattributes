@@ -6,3 +6,6 @@
 
 # The lockfile is generated - keep diffs out of review noise but keep it committed (P-2).
 uv.lock linguist-generated=true
+
+# Ledger snapshots are hash chains: byte-exact, never EOL-converted on any checkout.
+docs/ledger/** -text
