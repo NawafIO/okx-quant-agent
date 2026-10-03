@@ -173,19 +173,37 @@ skew ~= +199092 ms    (rtt 356 ms)
 skew ~= +199051 ms    (rtt 295 ms)
 ```
 
-**The host clock is ~199 seconds (3 min 19 s) ahead of OKX's server.** Consistent across samples and
-far beyond any latency artefact, so it is real.
+**At first measurement the host clock was ~199 seconds (3 min 19 s) ahead of OKX's server** -
+consistent across samples and far beyond any latency artefact, so it was real, not noise.
 
 **Harmless for M1**, whose requests are entirely unsigned. **Not harmless for M6**: OKX rejects
 *signed* requests whose timestamp drifts beyond its tolerance, which is far below 199 s.
 
-**Pre-M6 prerequisite P-10, two parts:**
+> ### RESOLVED (part a) - re-measured 2026-10-02 21:4x local
+>
+> The user resynced the host clock. Re-measured immediately after:
+>
+> ```
+> skew_ms = -203     <- latency noise on a single sample
+> skew_ms = 7
+> skew_ms = 2
+> ```
+>
+> `w32tm /query /status` confirms: **Last Successful Sync 2026-10-02 21:39:20**, source
+> `time.windows.com`, Stratum 5. **Skew is now within a few milliseconds** - a ~10^5x improvement,
+> and comfortably inside any plausible venue tolerance.
+>
+> It also retroactively explains the 9 falsely-quarantined 5m bars (§M1 report 7.1): the original
+> +199 s skew was one of the two factors, alongside a stale per-phase clock reading.
 
-1. **Resync the host clock** - `w32tm /resync` (elevated), and confirm the Windows Time service is
-   set to start automatically. *This is a change to the user's machine and is their call, not
-   something to do unasked.*
-2. **A boot-time skew check in the adapter** (§16) that refuses authenticated operations when skew
-   exceeds the venue's tolerance. **Measure that exact tolerance at M6** - it is not asserted here.
+**Pre-M6 prerequisite P-10 - part (a) DONE, part (b) STILL OPEN:**
+
+1. ~~**Resync the host clock**~~ - **done**, verified above. Note this is not a permanent guarantee:
+   clocks drift, and a machine that misses NTP sync can regress. The measurement is a point in time.
+2. **A boot-time skew check in the adapter** (§16) refusing authenticated operations when skew
+   exceeds the venue's tolerance. **STILL GATES M6** regardless of the current host reading - the
+   check is what makes future drift safe. **Measure the venue's exact tolerance at M6**; it is not
+   asserted here.
 
 ---
 

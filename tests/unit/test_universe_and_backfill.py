@@ -326,6 +326,99 @@ def test_gaps_are_recorded_to_manifest(wiring: tuple[ParquetStore, Manifest]) ->
     assert stats.rows_written == 20
 
 
+def test_historical_gap_survives_a_resumed_run(
+    wiring: tuple[ParquetStore, Manifest],
+) -> None:
+    """F-7 regression: a resumed top-up must not erase an older recorded gap.
+
+    The original backfill records a gap deep in history. A later run fetches only the
+    recent tail - as resume does - and must leave that gap record intact. The earlier
+    implementation derived gaps from the fetched slice and replaced the record for the
+    whole series, so the historical gap silently vanished.
+    """
+    store, manifest = wiring
+    start = NOW - 3 * YEAR_MS
+    # A series with a 10-bar hole early on.
+    historical = make_bars(10, start=start) + make_bars(10, start=start + 20 * HOUR)
+    src = FakeSource([], {}, {("BTC-USDT-SWAP", "1h", "last"): historical})
+    bf = Backfiller(src, store, manifest, env="PAPER")
+
+    bf.run_ohlcv([instrument("BTC")], "1h", horizon_ms=start - HOUR)
+    recorded = manifest.gaps_for("ohlcv", "BTC-USDT-SWAP", "1h")
+    assert len(recorded) == 1, "the historical gap must be recorded first"
+    assert recorded[0][2] == 10
+
+    # Now a "resume": the source returns only a recent, gapless tail.
+    tail_start = NOW - 30 * HOUR
+    src._bars = {("BTC-USDT-SWAP", "1h", "last"): make_bars(20, start=tail_start)}
+    bf.run_ohlcv([instrument("BTC")], "1h", horizon_ms=start - HOUR)
+
+    survived = manifest.gaps_for("ohlcv", "BTC-USDT-SWAP", "1h")
+    assert any(g[2] == 10 for g in survived), (
+        "the historical gap was erased by a resumed run - F-7 has regressed"
+    )
+
+
+def test_gap_in_a_sealed_month_persists(wiring: tuple[ParquetStore, Manifest]) -> None:
+    """A gap inside an already-sealed month is *not* repaired by a later run.
+
+    This is idempotency working as designed, not a defect: sealed partitions are skipped,
+    so the stored month keeps its hole and the recomputed gap record keeps reporting it -
+    which is the honest outcome. The consequence is a real limitation: if the venue later
+    backfills its own history, we will not pick it up without explicitly re-fetching that
+    partition. Documented in the roadmap as a gap-repair tool for M2 rather than silently
+    forcing rewrites, which would destroy the no-op property.
+    """
+    store, manifest = wiring
+    start = NOW - 3 * YEAR_MS
+    holed = make_bars(10, start=start) + make_bars(10, start=start + 20 * HOUR)
+    src = FakeSource([], {}, {("BTC-USDT-SWAP", "1h", "last"): holed})
+    bf = Backfiller(src, store, manifest, env="PAPER")
+    bf.run_ohlcv([instrument("BTC")], "1h", horizon_ms=start - HOUR)
+    assert manifest.gaps_for("ohlcv", "BTC-USDT-SWAP", "1h")
+
+    # The venue now offers contiguous data for the same window...
+    src._bars = {("BTC-USDT-SWAP", "1h", "last"): make_bars(30, start=start)}
+    bf.run_ohlcv([instrument("BTC")], "1h", horizon_ms=start - HOUR)
+
+    # ...but the sealed month is skipped, so the stored hole - and its record - remain.
+    assert manifest.gaps_for("ohlcv", "BTC-USDT-SWAP", "1h"), (
+        "a sealed partition must not be silently rewritten"
+    )
+    # The clearing path itself is covered at the manifest level by
+    # test_replace_gaps_with_empty_list_clears.
+
+
+def test_current_month_is_never_sealed(wiring: tuple[ParquetStore, Manifest]) -> None:
+    """Load-bearing invariant for resume.
+
+    The in-progress month is written but must never be recorded in the manifest. If it
+    were, ``extent()`` would reach into it, the next run's ``effective_stop`` would land
+    mid-month, and the always-rewritten current-month partition would be truncated to the
+    fetched tail - silently dropping earlier bars of that month.
+    """
+    store, manifest = wiring
+    # Bars spanning right up to "now", so the final month is the current one.
+    bars = make_bars(400, start=NOW - 400 * HOUR)
+    src = FakeSource([], {}, {("BTC-USDT-SWAP", "1h", "last"): bars})
+    Backfiller(src, store, manifest, env="PAPER").run_ohlcv(
+        [instrument("BTC")], "1h", horizon_ms=NOW - 400 * HOUR - HOUR
+    )
+
+    from datetime import UTC, datetime
+
+    now_dt = datetime.fromtimestamp(NOW / 1000, tz=UTC)
+    current = PartitionKey("ohlcv", "BTC-USDT-SWAP", "1h", now_dt.year, now_dt.month)
+    assert manifest.is_complete(current) is False, (
+        "the current month must not be sealed, or resume will truncate it"
+    )
+    # And the extent must stop before the current month begins.
+    extent = manifest.extent("ohlcv", "BTC-USDT-SWAP", "1h")
+    if extent is not None:
+        last_sealed = datetime.fromtimestamp(extent[1] / 1000, tz=UTC)
+        assert (last_sealed.year, last_sealed.month) != (now_dt.year, now_dt.month)
+
+
 def test_funding_partition_label_is_not_a_cadence(
     wiring: tuple[ParquetStore, Manifest],
 ) -> None:

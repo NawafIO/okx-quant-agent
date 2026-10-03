@@ -28,16 +28,33 @@ conn = duckdb.connect()
 read = f"read_parquet('{OHLCV}', hive_partitioning=true)"
 
 
+#: Runs per measurement. A single sample is too fragile to assert on: B-2 measured 0.068s,
+#: then 2.736s when it happened to run straight after a full-store scan had evicted the OS
+#: file cache, then 0.028s steady-state. The median of several runs reflects the access
+#: pattern; one cold sample reflects whatever else touched the disk. The budgets themselves
+#: are unchanged - this fixes the measurement, not the target.
+SAMPLES = 3
+
+
 def timed(tag: str, label: str, sql: str) -> None:
-    t0 = time.perf_counter()
-    result = conn.execute(sql).fetchall()
-    elapsed = time.perf_counter() - t0
+    timings: list[float] = []
+    rows = 0
+    for _ in range(SAMPLES):
+        t0 = time.perf_counter()
+        result = conn.execute(sql).fetchall()
+        timings.append(time.perf_counter() - t0)
+        rows = len(result)
+    timings.sort()
+    median = timings[len(timings) // 2]
     budget = BUDGETS[tag]
-    ok = elapsed < budget
+    ok = median < budget
     print(f"  [{'PASS' if ok else 'FAIL'}] {tag} {label}")
-    print(f"         {elapsed:.3f}s (budget {budget:.1f}s), {len(result)} row(s) out")
+    print(
+        f"         median {median:.3f}s of {SAMPLES} (budget {budget:.1f}s) "
+        f"[min {timings[0]:.3f} max {timings[-1]:.3f}], {rows} row(s) out"
+    )
     if not ok:
-        failures.append(f"{tag}: {elapsed:.3f}s exceeded {budget}s")
+        failures.append(f"{tag}: median {median:.3f}s exceeded {budget}s")
 
 
 print("=" * 78)

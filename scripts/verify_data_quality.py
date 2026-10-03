@@ -176,6 +176,32 @@ if list((ROOT / "funding").rglob("*.parquet")):
     ).fetchone()[0]
     check("no implausible funding rates", extreme == 0, f"{extreme} rows above 5%")
 
+    # This check was missing and let a real defect through: relabelling the funding
+    # partition key from `timeframe=8h` to `timeframe=funding` orphaned the old
+    # partitions, and the recursive glob read both - 13,532 rows against 7,221 distinct
+    # keys. The OHLCV duplicate check existed; funding had none.
+    f_total = conn.execute(f"SELECT COUNT(*) FROM {fread}").fetchone()[0]
+    f_distinct = conn.execute(
+        f"SELECT COUNT(*) FROM (SELECT DISTINCT inst_id, funding_time_ms FROM {fread})"
+    ).fetchone()[0]
+    check(
+        "no duplicate funding observations",
+        f_total == f_distinct,
+        f"{f_total:,} rows vs {f_distinct:,} distinct keys"
+        + (
+            " - orphaned partitions? run scripts/prune_stale_partitions.py"
+            if f_total != f_distinct
+            else ""
+        ),
+    )
+
+    labels = {r[0] for r in conn.execute(f"SELECT DISTINCT timeframe FROM {fread}").fetchall()}
+    check(
+        "single funding partition label",
+        labels == {"funding"},
+        f"labels present: {sorted(labels)}",
+    )
+
 print("\n" + "=" * 78)
 if failures:
     print(f"VERIFICATION FAILED - {len(failures)} check(s):")

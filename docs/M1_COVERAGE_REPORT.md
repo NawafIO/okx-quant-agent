@@ -1,6 +1,6 @@
 # M1 Coverage & Gap Report
 
-Generated: **2026-10-02 19:05 UTC** · environment: **PAPER**
+Generated: **2026-10-03 08:30 UTC** · environment: **PAPER**
 Source: the Parquet store itself (DuckDB) cross-checked against the SQLite manifest -
 so this describes what is on disk, not what the backfill believed it wrote.
 
@@ -14,7 +14,7 @@ Store: **2,532 Parquet files, 122.3 MB**
 |---|---|
 | OHLCV bars stored | **1,826,453** |
 | Distinct instruments (OHLCV) | **20** |
-| Funding observations | **6,598** |
+| Funding observations | **6,934** |
 | Distinct instruments (funding) | **20** |
 
 ## 2. Coverage by series
@@ -81,35 +81,35 @@ on the 4h instruments, understating costs in the profitable direction.
 
 | instrument | rows | from | to | cadence |
 |---|---|---|---|---|
-| CL-USDT-SWAP | 573 | 2026-06-29 | 2026-10-02 | **4h** |
-| PUMP-USDT-SWAP | 573 | 2026-06-29 | 2026-10-02 | **4h** |
-| TRUMP-USDT-SWAP | 573 | 2026-06-29 | 2026-10-02 | **4h** |
-| AAVE-USDT-SWAP | 287 | 2026-06-29 | 2026-10-02 | **8h** |
-| BTC-USDT-SWAP | 287 | 2026-06-29 | 2026-10-02 | **8h** |
-| DOGE-USDT-SWAP | 287 | 2026-06-29 | 2026-10-02 | **8h** |
-| ETH-USDT-SWAP | 287 | 2026-06-29 | 2026-10-02 | **8h** |
-| HYPE-USDT-SWAP | 287 | 2026-06-29 | 2026-10-02 | **8h** |
-| MU-USDT-SWAP | 287 | 2026-06-29 | 2026-10-02 | **8h** |
-| NEAR-USDT-SWAP | 287 | 2026-06-29 | 2026-10-02 | **8h** |
-| PEPE-USDT-SWAP | 287 | 2026-06-29 | 2026-10-02 | **8h** |
-| SAND-USDT-SWAP | 287 | 2026-06-29 | 2026-10-02 | **8h** |
-| SNDK-USDT-SWAP | 287 | 2026-06-29 | 2026-10-02 | **8h** |
-| SOL-USDT-SWAP | 287 | 2026-06-29 | 2026-10-02 | **8h** |
-| SUI-USDT-SWAP | 287 | 2026-06-29 | 2026-10-02 | **8h** |
-| UNI-USDT-SWAP | 287 | 2026-06-29 | 2026-10-02 | **8h** |
-| WLD-USDT-SWAP | 287 | 2026-06-29 | 2026-10-02 | **8h** |
-| XAU-USDT-SWAP | 287 | 2026-06-29 | 2026-10-02 | **8h** |
-| XRP-USDT-SWAP | 287 | 2026-06-29 | 2026-10-02 | **8h** |
-| ZEC-USDT-SWAP | 287 | 2026-06-29 | 2026-10-02 | **8h** |
+| CL-USDT-SWAP | 577 | 2026-06-29 | 2026-10-03 | **4h** |
+| NIGHT-USDT-SWAP | 577 | 2026-06-29 | 2026-10-03 | **4h** |
+| PUMP-USDT-SWAP | 577 | 2026-06-29 | 2026-10-03 | **4h** |
+| TRUMP-USDT-SWAP | 577 | 2026-06-29 | 2026-10-03 | **4h** |
+| BTC-USDT-SWAP | 289 | 2026-06-29 | 2026-10-03 | **8h** |
+| DOGE-USDT-SWAP | 289 | 2026-06-29 | 2026-10-03 | **8h** |
+| ETH-USDT-SWAP | 289 | 2026-06-29 | 2026-10-03 | **8h** |
+| HYPE-USDT-SWAP | 289 | 2026-06-29 | 2026-10-03 | **8h** |
+| MU-USDT-SWAP | 289 | 2026-06-29 | 2026-10-03 | **8h** |
+| NEAR-USDT-SWAP | 289 | 2026-06-29 | 2026-10-03 | **8h** |
+| PEPE-USDT-SWAP | 289 | 2026-06-29 | 2026-10-03 | **8h** |
+| SAND-USDT-SWAP | 291 | 2026-06-29 | 2026-10-03 | **8h** |
+| SNDK-USDT-SWAP | 289 | 2026-06-29 | 2026-10-03 | **8h** |
+| SOL-USDT-SWAP | 289 | 2026-06-29 | 2026-10-03 | **8h** |
+| SUI-USDT-SWAP | 289 | 2026-06-29 | 2026-10-03 | **8h** |
+| UNI-USDT-SWAP | 289 | 2026-06-29 | 2026-10-03 | **8h** |
+| WLD-USDT-SWAP | 289 | 2026-06-29 | 2026-10-03 | **8h** |
+| XAU-USDT-SWAP | 289 | 2026-06-29 | 2026-10-03 | **8h** |
+| XRP-USDT-SWAP | 289 | 2026-06-29 | 2026-10-03 | **8h** |
+| ZEC-USDT-SWAP | 289 | 2026-06-29 | 2026-10-03 | **8h** |
 
 ## 7. Manifest cross-check
 
 | Source | Partitions | Rows |
 |---|---|---|
-| Manifest | 2,477 | 1,829,196 |
-| Parquet on disk | 2,532 | 1,833,051 |
+| Manifest | 2,477 | 1,829,532 |
+| Parquet on disk | 2,532 | 1,833,387 |
 
-Recorded gap runs: **0** · recorded rejections: **9** · backfill runs: **3**
+Recorded gap runs: **0** · recorded rejections: **9** · backfill runs: **5**
 
 The manifest may record *fewer* rows than disk holds - the in-progress calendar month
 is written but deliberately not sealed, and a crashed run leaves work to redo rather

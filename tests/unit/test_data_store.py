@@ -214,7 +214,7 @@ def test_manifest_survives_reopen(tmp_path: Path) -> None:
 
 def test_gaps_and_rejections_recorded(tmp_path: Path) -> None:
     manifest = Manifest(tmp_path / "m.db")
-    manifest.record_gaps("ohlcv", "BTC-USDT-SWAP", "1h", [(BASE, BASE + HOUR, 2)])
+    manifest.replace_gaps("ohlcv", "BTC-USDT-SWAP", "1h", [(BASE, BASE + HOUR, 2)])
     manifest.record_rejections(
         "ohlcv", "BTC-USDT-SWAP", "1h", [(BASE, "ohlc_invalid", "high < low")]
     )
@@ -227,8 +227,35 @@ def test_recording_gaps_twice_does_not_duplicate(tmp_path: Path) -> None:
     """Re-running a backfill must not accumulate duplicate gap rows."""
     manifest = Manifest(tmp_path / "m.db")
     for _ in range(3):
-        manifest.record_gaps("ohlcv", "BTC-USDT-SWAP", "1h", [(BASE, BASE + HOUR, 2)])
+        manifest.replace_gaps("ohlcv", "BTC-USDT-SWAP", "1h", [(BASE, BASE + HOUR, 2)])
     assert manifest.totals()["gap_runs"] == 1
+
+
+def test_replace_gaps_with_empty_list_clears(tmp_path: Path) -> None:
+    """A gap that a later fetch has filled must be cleared, not left behind (F-7)."""
+    manifest = Manifest(tmp_path / "m.db")
+    manifest.replace_gaps("ohlcv", "BTC-USDT-SWAP", "1h", [(BASE, BASE + HOUR, 2)])
+    assert manifest.totals()["gap_runs"] == 1
+
+    manifest.replace_gaps("ohlcv", "BTC-USDT-SWAP", "1h", [])
+    assert manifest.totals()["gap_runs"] == 0
+
+
+def test_gaps_are_isolated_per_price_type(tmp_path: Path) -> None:
+    """mark/index/last are separate series and must not overwrite each other's gaps."""
+    manifest = Manifest(tmp_path / "m.db")
+    manifest.replace_gaps(
+        "ohlcv", "BTC-USDT-SWAP", "1h", [(BASE, BASE + HOUR, 2)], price_type="last"
+    )
+    manifest.replace_gaps(
+        "ohlcv", "BTC-USDT-SWAP", "1h", [(BASE, BASE + 5 * HOUR, 5)], price_type="mark"
+    )
+    assert manifest.gaps_for("ohlcv", "BTC-USDT-SWAP", "1h", price_type="last") == [
+        (BASE, BASE + HOUR, 2)
+    ]
+    assert manifest.gaps_for("ohlcv", "BTC-USDT-SWAP", "1h", price_type="mark") == [
+        (BASE, BASE + 5 * HOUR, 5)
+    ]
 
 
 # --- partitioning and duckdb ------------------------------------------------------------

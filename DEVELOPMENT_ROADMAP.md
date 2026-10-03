@@ -36,13 +36,14 @@ happen in Phase 2 or 3. See architecture §6.4.
 | **P-1** | **Install Python 3.12+** (`winget install Python.Python.3.12`) | **BLOCKING. No Python runtime exists on this host** (architecture W-3: `python.exe` on PATH is the Microsoft Store stub; no `pip`, no `py`, empty `PythonCore` registry). Ruling X-1 keeps the Python stack and makes this a prerequisite |
 | **P-2** | Create and activate a project venv; pin every dependency; commit the lockfile | Reproducibility; also R-5 (CCXT pinning) |
 | **P-3** | `git init` the project and add `.gitignore` (`.env*`, `state/`, `data/`, `audit/`, `__pycache__`) | Needed for strategy versioning by git sha (architecture §10). **Requires user's go-ahead** - Phase 1 initialises nothing |
-| **P-4** | Secrets mechanism decided and tested with a dummy value; pre-commit secret scan installed | Architecture §20.3. Must work before any key exists |
+| **P-4** | Secrets mechanism decided and tested with a dummy value; pre-commit secret scan installed | **SATISFIED at M1** - scan verified both ways. Architecture §20.3. Must work before any key exists |
 | **P-5** | **OKX account with demo/simulated trading available; demo API key generated** (trade scope, demo only) | Needed at M6. **No LIVE key is created at any point in Phase 2 or 3** |
 | **P-6** | Telegram bot created via BotFather; the single authorised user id recorded | Needed at M8 |
 | **P-7** | Advisor verdict RECOMMEND TO APPLY + user authorisation | This roadmap is not self-authorising |
 | **P-8** | Rulings on architecture §23 Q-4 (risk budget numbers) and Q-5 (HITL permanence) | **SATISFIED - both ruled by the Chief Advisor 2026-10-02; see architecture §23** |
 | **P-9** | LLM API credential (for subsystems 3, 6, 15, 17 narration) | Needed at M8 (audit finding **F-2**). **Its absence never blocks trading** - the system degrades closed to deterministic rules (architecture §5.2) |
-| **P-10** | **Host clock resync + adapter boot-time skew check** | **NEW, discovered at M1. BLOCKING FOR M6.** The host clock measured **~199 s (3m19s) ahead** of OKX's server, consistently across three latency-compensated samples (`docs/VENUE_FACTS.md` §5). Harmless for M1's unsigned public requests; **OKX rejects *signed* requests far below that drift**. Two parts: (a) `w32tm /resync` elevated plus Windows Time service set to automatic - **a change to the user's machine, their call**; (b) an adapter boot check refusing authenticated operations beyond the venue's tolerance, **that tolerance to be measured at M6, not assumed** |
+| **P-10** | **Host clock resync + adapter boot-time skew check** | **NEW, discovered at M1. BLOCKING FOR M6.** The host clock measured **~199 s (3m19s) ahead** of OKX's server, consistently across three latency-compensated samples (`docs/VENUE_FACTS.md` §5). Harmless for M1's unsigned public requests; **OKX rejects *signed* requests far below that drift**. Two parts: (a) `w32tm /resync` elevated plus Windows Time service set to automatic - **a change to the user's machine, their call**; (b) an adapter boot check refusing authenticated operations beyond the venue's tolerance, **that tolerance to be measured at M6, not assumed**. **Status: part (a) DONE and VERIFIED** - the user resynced; re-measured at **-203 / +7 / +2 ms** against OKX, with `w32tm` confirming a successful sync at 2026-10-02 21:39:20 from `time.windows.com`. **Part (b) STILL OPEN and still gates M6**: clocks drift, so the boot-time check is what makes future drift safe, not the current good reading |
+| **P-11** | **Recurring funding archive** (advisor finding **F-8**) | **BLOCKS M2 SIGN-OFF.** OKX retains only ~95 days of realised funding and the window rolls, so every missed week is permanently lost ground truth. The backfill capability exists; a *schedule* does not, and "someone remembers" is not a mechanism. Close by either a Windows Task Scheduler entry running the funding-only backfill weekly - **touches the user's machine, their call** - or a documented operational requirement at <= monthly cadence checked in M2's entry criteria |
 
 ---
 
@@ -62,7 +63,7 @@ repository initialised with `.gitignore` and `.gitattributes` (P-3).
 | P-1 Python 3.12+ | **DONE** - 3.12.10 |
 | P-2 venv + pinned deps + committed lockfile | **DONE** - `uv.lock`, 53 packages; `uv sync --locked` in CI fails on drift (also R-5's control) |
 | P-3 git init + `.gitignore` | **DONE** |
-| P-4 secrets mechanism + redaction | **DONE** - env-var sourced, central redaction, 8 guard tests; **pre-commit secret scan still outstanding** |
+| P-4 secrets mechanism + redaction | **DONE (closed at M1)** - env-var sourced, central redaction, guard tests, **plus the pre-commit secret scan**: `detect-secrets` + `detect-private-key` with a BOM-free baseline, verified **both ways** (passes clean, blocks a planted credential). In place before P-5 creates any key |
 | P-5 OKX demo account + demo key | **NOT STARTED** - not needed until M6 |
 | P-6 Telegram bot + authorised user id | **NOT STARTED** - not needed until M8 |
 | P-7 advisor verdict + user authorisation | **DONE** |
@@ -84,13 +85,45 @@ chain skeleton (§20.2); pytest + Hypothesis + coverage + ruff + mypy (strict) w
 
 **Risk:** low. **Exit:** scaffold green in CI. **EXITED.**
 
-> **Carried forward to M1:** the pre-commit secret scan (part of P-4) is not yet installed. It is
-> listed here rather than quietly dropped. Nothing in M0 handles a real credential, so the gap is not
-> yet load-bearing - but it must close before P-5 creates the first demo key.
+> **Carried forward to M1 - now CLOSED.** The pre-commit secret scan (part of P-4) was outstanding at
+> M0 and was installed at M1: `detect-secrets` with a BOM-free baseline, verified both ways (passes
+> on the clean tree, blocks a planted credential). In place before P-5 creates the first demo key,
+> which was the point of tracking it rather than dropping it.
 
 ---
 
-### M1 - Historical Data Pipeline + empirical venue reconnaissance
+### M1 - Historical Data Pipeline + empirical venue reconnaissance - **COMPLETE 2026-10-02**
+
+**Chief Advisor verdict: M1 ACCEPTED**, conditional on F-7 (fixed, with regression tests) and
+F-8 (funding archive schedule - **must close before M2 sign-off**). F-9 applied.
+
+**Evidence:** 1,826,453 OHLCV bars + 6,598 funding observations, 20 instruments, 2,532 Parquet
+files, 122 MB · ruff + format + `mypy --strict` clean (35 files) · **175 tests passing (35 guards)**
+· zero gap runs on every grid, independently re-derived in SQL · forced process kill + resume clean ·
+all four DuckDB query budgets met · `docs/M1_COVERAGE_REPORT.md` · `docs/VENUE_FACTS.md`.
+
+| Acceptance criterion | Status |
+|---|---|
+| >= 20 symbols on 1h + 1d, >= 5 on 5m | **MET** - 20 / 20 / 5 |
+| Funding backfilled for the whole universe (F-1) | **MET** - 20 instruments, full retained depth. *"Gap-accounted on the funding-interval grid" is deliberately unmet as written*: V-13 established there is no single grid, so an 8h grid would quarantine every 4h instrument's genuine data. The `{4h, 8h}` assertion in `verify_data_quality.py` would surface a missing interval as a 16h delta instead |
+| Zero validation failures silently passed | **MET** - 9 rejections recorded, investigated, root-caused to our own stale-clock bug, fixed, bars recovered, re-run zero |
+| Re-run is a verified no-op | **MET** - 231 of 234 partitions skipped; resume cuts 130 requests to 12 |
+| Forced kill mid-run, no torn Parquet | **MET** - real process hard-kill plus the during-write unit test |
+| `VENUE_FACTS.md` answers Q-1 with numbers + explicit decision | **MET** - including two self-corrections (probe bias, V-13) |
+| DuckDB query within a stated budget | **MET** - budgets stated before measuring; B-2 failed, was diagnosed to file-listing overhead rather than relaxed, and now passes at 0.068 s |
+
+**Carried forward, explicitly:**
+
+| ID | Item | Where it lands |
+|---|---|---|
+| **F-8** | **The funding archive has no recurring mechanism.** The capability exists; the schedule does not. Retention is ~95 days, so nothing is lost yet, but "someone remembers to run it" is not a mechanism and the loss is permanent. **Blocks M2 sign-off.** Either a Windows Task Scheduler entry (touches the user's machine - their call, as with P-10) or a documented operational requirement at <= monthly cadence plus a check in M2's entry criteria | before M2 sign-off |
+| **Error-code taxonomy** | Only partially characterised at M1 (51001 and rate limits observed). Folded into M6, where the typed taxonomy is built - not dropped | M6 |
+| **Gap-repair tool** | A gap inside an already-sealed partition is never re-attempted, because sealed partitions are skipped. That is idempotency working, and the gap stays honestly recorded - but if the venue later backfills its own history we will not pick it up without an explicit re-fetch | M2 |
+| **Walk-forward universe** | Only **12 of 20** instruments have >= 3 years of hourly history. M4's universe selection must filter on history length *as well as* liquidity; `MIN_LISTING_AGE_DAYS = 180` exists to exclude price-discovery artefacts and is far too permissive for this purpose | M4 |
+
+---
+
+### M1 - original specification
 *The first milestone that touches the network. Public endpoints only. No credentials used.*
 
 **Deliverables:** OKX adapter read-only surface (`load_markets`, `fetch_ohlcv`, funding history) with
