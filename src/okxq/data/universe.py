@@ -87,3 +87,30 @@ def as_instruments(entries: list[UniverseEntry]) -> list[dict[str, object]]:
     return [
         {"symbol": e.symbol, "inst_id": e.inst_id, "inst_family": e.inst_family} for e in entries
     ]
+
+
+def with_archived(
+    instruments: list[dict[str, object]],
+    archived_ids: list[str],
+    markets: dict[str, Any],
+) -> list[dict[str, object]]:
+    """The funding archive's instrument list: the current top-N PLUS every instrument the
+    store already holds (prerequisite P-11).
+
+    The top-N by turnover drifts week to week (measured: AAVE left and NIGHT joined between
+    2026-10-02 and 2026-10-03). Archiving only the current top-N would silently stop
+    archiving an instrument the moment it drops out, and its realised funding would then age
+    out of OKX's ~95-day window for good - permanent loss of the one dataset that cannot be
+    re-fetched. Instruments no longer listed are kept too (symbol falls back to the inst_id);
+    their fetch failing is recorded per instrument and does not stop the run.
+    """
+    have = {str(i["inst_id"]) for i in instruments}
+    by_id = {str(m.get("id")): m for m in markets.values() if isinstance(m, dict)}
+    extra: list[dict[str, object]] = []
+    for inst_id in sorted(set(archived_ids) - have):
+        m = by_id.get(inst_id, {})
+        family = (m.get("info") or {}).get("instFamily") if isinstance(m, dict) else None
+        extra.append(
+            {"symbol": str(m.get("symbol", inst_id)), "inst_id": inst_id, "inst_family": family}
+        )
+    return instruments + extra

@@ -18,7 +18,7 @@ from okxq.data.backfill import Backfiller, BackfillStats, horizon_ms_for_years, 
 from okxq.data.manifest import Manifest
 from okxq.data.okx_public import OkxPublic
 from okxq.data.store import ParquetStore, register_views
-from okxq.data.universe import as_instruments, select_universe
+from okxq.data.universe import as_instruments, select_universe, with_archived
 from okxq.env.profiles import EnvProfile, build_profile, ensure_dirs, parse_env
 from okxq.errors import OkxqError
 from okxq.obs.logging import configure_logging, get_logger
@@ -102,8 +102,20 @@ def cmd_backfill(args: argparse.Namespace) -> int:
             stats.merge(phase)
 
     if not args.skip_funding:
-        print(f"\n=== funding history ({len(instruments)} instruments) ===")
-        phase = backfiller.run_funding(instruments)
+        archived = sorted(
+            {
+                p.name.removeprefix("inst_id=")
+                for dataset in DATASETS
+                for p in (profile.parquet_root / dataset).glob("inst_id=*")
+            }
+        )
+        funding_set = with_archived(instruments, archived, markets)
+        kept = len(funding_set) - len(instruments)
+        print(
+            f"\n=== funding history ({len(funding_set)} instruments, {kept} kept from the "
+            "archive though no longer in the top-N) ==="
+        )
+        phase = backfiller.run_funding(funding_set)
         print(f"  {phase.summary()}")
         stats.merge(phase)
 

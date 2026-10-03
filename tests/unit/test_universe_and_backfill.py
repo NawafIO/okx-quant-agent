@@ -430,3 +430,30 @@ def test_funding_partition_label_is_not_a_cadence(
     key = PartitionKey("funding", "BTC-USDT-SWAP", FUNDING_TIMEFRAME, 2026, 7)
     assert "timeframe=funding" in store.partition_path(key).as_posix()
     assert "8h" not in store.partition_path(key).as_posix()
+
+
+def test_funding_archive_keeps_instruments_that_left_the_top_n() -> None:
+    """P-11: an instrument dropping out of the turnover ranking must stay archived,
+    otherwise its realised funding ages out of the venue's ~95-day window for good."""
+    from okxq.data.universe import with_archived
+
+    current: list[dict[str, object]] = [
+        {"symbol": "BTC/USDT:USDT", "inst_id": "BTC-USDT-SWAP", "inst_family": "BTC-USDT"}
+    ]
+    markets = {
+        "AAVE/USDT:USDT": {
+            "id": "AAVE-USDT-SWAP",
+            "symbol": "AAVE/USDT:USDT",
+            "info": {"instFamily": "AAVE-USDT"},
+        },
+    }
+    out = with_archived(current, ["BTC-USDT-SWAP", "AAVE-USDT-SWAP", "GONE-USDT-SWAP"], markets)
+    assert [i["inst_id"] for i in out] == ["BTC-USDT-SWAP", "AAVE-USDT-SWAP", "GONE-USDT-SWAP"]
+    assert out[1] == {
+        "symbol": "AAVE/USDT:USDT",
+        "inst_id": "AAVE-USDT-SWAP",
+        "inst_family": "AAVE-USDT",
+    }
+    # Delisted: no market any more, still attempted (its failure is recorded, not fatal).
+    assert out[2]["symbol"] == "GONE-USDT-SWAP"
+    assert with_archived(current, [], markets) == current
