@@ -26,7 +26,7 @@ deviation and is not quietly satisfied.
 | Rule | Value | Why |
 |---|---|---|
 | Sizing | `ResearchSizing`, pinned `e32046ed…`: 0.5% risk per trade (RC-05), 3x leverage (RC-12). The same for every candidate, never in a grid; its sha is on every trial and GateReport | Sizing is a G-1 lever (commit 4ba9295) |
-| Research span | **2020-06-01 .. 2025-09-30**, project-wide. The earliest 1h data (2019-12) plus 180 days of warm-up | The start is not a per-candidate degree of freedom |
+| Research span | **2020-07-01 .. 2025-09-30**, project-wide. The earliest first 1h bar (BTC, 2019-12-16) plus 180 days of warm-up is 2020-06-13, rounded up to the month boundary because folds step in months. **Corrected at N = 0:** it was first written as 2020-06-01, computed from "2019-12". The first run crashed with an empty first window before recording any trial (`docs/m4_runs/trend_breakout_run0_CRASH.txt`), so no result informed the change | The start is not a per-candidate degree of freedom |
 | Instrument entry | An instrument takes part in a window only if its first bar is at least 180 days before the window start | Instruments enter when their data begins plus warm-up |
 | Warm-up | A strategy's declared warm-up is at most 180 days at its timeframe. Its decisions from a buffer of exactly that length must equal its decisions from full history (bounded-buffer test) | M3 OBV lesson: infinite-memory indicators |
 | Universe (dual filter) | (a) first 1h bar on or before 2022-09-30 (at least 3 years before research end) **and** (b) median daily quote turnover (close x base volume) over the instrument's research-window days of at least $5M (`MIN_24H_QUOTE_VOLUME`, the existing live gate) | Handover §3.6 |

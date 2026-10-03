@@ -33,7 +33,7 @@ from okxq.strategy.candidates import keltner_reversion, trend_breakout, vol_comp
 
 ROOT = Path(__file__).resolve().parents[1]
 DAY_MS = 86_400_000
-RESEARCH_START_MS = int(datetime(2020, 6, 1, tzinfo=UTC).timestamp() * 1000)
+RESEARCH_START_MS = int(datetime(2020, 7, 1, tzinfo=UTC).timestamp() * 1000)
 WARMUP_MS = 180 * DAY_MS
 MODULES = {
     mod.SPEC.strategy_id: mod
@@ -110,7 +110,7 @@ def main() -> int:
     grid = spec.grid(mod.GRID)
     print(
         f"{spec.strategy_id} version {spec.version[:12]}; grid {len(grid)}; "
-        f"span 2020-06-01..2025-09-30; sizing {RESEARCH_SIZING.sha256()[:12]}; "
+        f"span 2020-07-01..2025-09-30; sizing {RESEARCH_SIZING.sha256()[:12]}; "
         f"trials before this run {n0}"
     )
     res = proto.run(grid, RESEARCH_START_MS, FROZEN.holdout_start_ms)

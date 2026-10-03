@@ -1,0 +1,25 @@
+trend_breakout version 8dec27355fd6; grid 8; span 2020-06-01..2025-09-30; sizing e32046ed9bbc; trials before this run 0
+Traceback (most recent call last):
+  File "/home/user/okx-quant-agent/scripts/m4_research.py", line 157, in <module>
+    sys.exit(main())
+             ^^^^^^
+  File "/home/user/okx-quant-agent/scripts/m4_research.py", line 116, in main
+    res = proto.run(grid, RESEARCH_START_MS, FROZEN.holdout_start_ms)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/user/okx-quant-agent/src/okxq/backtest/walkforward.py", line 303, in run
+    wf = self.walk_forward(grid, start_ms, end_ms)
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/user/okx-quant-agent/src/okxq/backtest/walkforward.py", line 237, in walk_forward
+    selected = self.select(grid, fold.train_start_ms, fold.train_end_ms)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/user/okx-quant-agent/src/okxq/backtest/walkforward.py", line 204, in select
+    ev = self.evaluate_params(params, start_ms, end_ms, purpose="selection")
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/user/okx-quant-agent/src/okxq/backtest/walkforward.py", line 180, in evaluate_params
+    annual = m.sharpe_ratio(rets, periods_per_year(series))
+                                  ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/user/okx-quant-agent/src/okxq/backtest/walkforward.py", line 92, in periods_per_year
+    tf = min(s.timeframe_ms for s in series.values())
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ValueError: min() iterable argument is empty
+exit=1
