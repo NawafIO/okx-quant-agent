@@ -1,0 +1,52 @@
+# First real-data run of the frozen regime classifier against the pre-registered BTC key.
+# commit aadf7eb, thresholds 260beabd593e..., key 903fcf739cae...; run 2026-10-03. KEPT AS-IS (failing output is evidence).
+BTC-USDT-SWAP 1d, 2100 days 2020-01-01..2025-09-30; thresholds 260beabd593e; key 903fcf739cae
+overall label mix: {<Regime.UNDEFINED: 'UNDEFINED'>: 195, <Regime.CRISIS: 'CRISIS'>: 20, <Regime.RANGE: 'RANGE'>: 516, <Regime.TREND_UP: 'TREND_UP'>: 794, <Regime.TREND_DOWN: 'TREND_DOWN'>: 496, <Regime.HIGH_VOL: 'HIGH_VOL'>: 79}
+  [PASS] TREND_UP 2021-01-01..2021-04-13: 78% expected (>=60%), 0% opposite (<=10%), 1% HIGH_VOL+CRISIS (<=25%); {<Regime.TREND_UP: 'TREND_UP'>: 80, <Regime.CRISIS: 'CRISIS'>: 1, <Regime.RANGE: 'RANGE'>: 22}
+  [FAIL] TREND_UP 2021-07-21..2021-11-09: 80% expected (>=60%), 12% opposite (<=10%), 1% HIGH_VOL+CRISIS (<=25%); {<Regime.TREND_DOWN: 'TREND_DOWN'>: 14, <Regime.RANGE: 'RANGE'>: 7, <Regime.TREND_UP: 'TREND_UP'>: 90, <Regime.CRISIS: 'CRISIS'>: 1}
+  [FAIL] TREND_DOWN 2022-04-01..2022-06-30: 56% expected (>=60%), 8% opposite (<=10%), 21% HIGH_VOL+CRISIS (<=25%); {<Regime.TREND_UP: 'TREND_UP'>: 7, <Regime.RANGE: 'RANGE'>: 14, <Regime.TREND_DOWN: 'TREND_DOWN'>: 51, <Regime.CRISIS: 'CRISIS'>: 6, <Regime.HIGH_VOL: 'HIGH_VOL'>: 13}
+  [FAIL] TREND_DOWN 2022-08-15..2022-12-31: 57% expected (>=60%), 3% opposite (<=10%), 4% HIGH_VOL+CRISIS (<=25%); {<Regime.TREND_UP: 'TREND_UP'>: 4, <Regime.CRISIS: 'CRISIS'>: 2, <Regime.RANGE: 'RANGE'>: 50, <Regime.TREND_DOWN: 'TREND_DOWN'>: 79, <Regime.HIGH_VOL: 'HIGH_VOL'>: 4}
+  [PASS] CRISIS 2020-03-12 (COVID crash): fired on ['2020-03-12', '2020-03-13', '2020-03-14']
+  [PASS] CRISIS 2021-05-19 (May 2021 crash): fired on ['2021-05-19']; EARLIER (finding): ['2021-05-12']
+  [PASS] CRISIS 2022-06-13 (Celsius freeze / 3AC): fired on ['2022-06-13', '2022-06-14', '2022-06-15']
+  [PASS] CRISIS 2022-11-08 (FTX collapse (8-9 Nov)): fired on ['2022-11-09']
+  [PASS] CRISIS rate 0.95% of 2100 days (<=3%)
+  [PASS] calm 2020-07-01..2020-07-20: CRISIS on 0 days (0)
+  [PASS] calm 2023-07-01..2023-08-15: CRISIS on 0 days (0)
+  [FAIL] RANGE 2023-07-01..2023-08-15: 37% (>=60%); {<Regime.TREND_UP: 'TREND_UP'>: 29, <Regime.RANGE: 'RANGE'>: 17}
+REGIME VALIDATION: FAIL
+
+# Per-window label runs and inputs (diagnostic, same run):
+--- 2021-07-21..2021-11-09
+  2021-07-21 c=32119 adx=27 ef/es=-0.077 sl=-0.048 vr=0.25..2021-07-28 c=40016 adx=27 ef/es=-0.027 sl=-0.009 vr=0.31 TREND_DOWN n=8
+  2021-07-29 c=40028 adx=28 ef/es=-0.017 sl=+0.001 vr=0.30..2021-07-30 c=42205 adx=30 ef/es=-0.005 sl=+0.015 vr=0.35 RANGE      n=2
+  2021-07-31 c=41449 adx=32 ef/es=+0.004 sl=+0.024 vr=0.41..2021-09-06 c=52660 adx=26 ef/es=+0.079 sl=+0.052 vr=0.15 TREND_UP   n=38
+  2021-09-07 c=46851 adx=26 ef/es=+0.073 sl=+0.048 vr=0.63..2021-09-07 c=46851 adx=26 ef/es=+0.073 sl=+0.048 vr=0.63 CRISIS     n=1
+  2021-09-08 c=46075 adx=26 ef/es=+0.068 sl=+0.044 vr=0.59..2021-09-23 c=44858 adx=29 ef/es=+0.014 sl=+0.003 vr=0.67 TREND_UP   n=16
+  2021-09-24 c=42803 adx=30 ef/es=+0.010 sl=-0.001 vr=0.68..2021-09-26 c=43178 adx=32 ef/es=+0.002 sl=-0.009 vr=0.65 RANGE      n=3
+  2021-09-27 c=42146 adx=32 ef/es=-0.001 sl=-0.013 vr=0.49..2021-10-02 c=47649 adx=29 ef/es=-0.000 sl=-0.010 vr=0.64 TREND_DOWN n=6
+  2021-10-03 c=48207 adx=27 ef/es=+0.004 sl=-0.007 vr=0.64..2021-10-04 c=49211 adx=26 ef/es=+0.009 sl=-0.001 vr=0.63 RANGE      n=2
+  2021-10-05 c=51480 adx=26 ef/es=+0.016 sl=+0.006 vr=0.63..2021-11-09 c=66975 adx=29 ef/es=+0.079 sl=+0.051 vr=0.13 TREND_UP   n=36
+--- 2022-04-01..2022-06-30
+  2022-04-01 c=46288 adx=24 ef/es=+0.034 sl=+0.039 vr=0.02..2022-04-07 c=43444 adx=20 ef/es=+0.032 sl=+0.030 vr=0.03 TREND_UP   n=7
+  2022-04-08 c=42255 adx=20 ef/es=+0.028 sl=+0.024 vr=0.04..2022-04-21 c=40476 adx=20 ef/es=-0.010 sl=-0.017 vr=0.06 RANGE      n=14
+  2022-04-22 c=39692 adx=20 ef/es=-0.012 sl=-0.017 vr=0.06..2022-05-08 c=34050 adx=29 ef/es=-0.045 sl=-0.034 vr=0.35 TREND_DOWN n=17
+  2022-05-09 c=30082 adx=31 ef/es=-0.055 sl=-0.041 vr=0.70..2022-05-09 c=30082 adx=31 ef/es=-0.055 sl=-0.041 vr=0.70 CRISIS     n=1
+  2022-05-10 c=31019 adx=33 ef/es=-0.062 sl=-0.046 vr=0.73..2022-06-12 c=26581 adx=24 ef/es=-0.075 sl=-0.040 vr=0.47 TREND_DOWN n=34
+  2022-06-13 c=22478 adx=26 ef/es=-0.086 sl=-0.047 vr=0.94..2022-06-17 c=20470 adx=35 ef/es=-0.124 sl=-0.082 vr=0.97 CRISIS     n=5
+  2022-06-18 c=18972 adx=38 ef/es=-0.136 sl=-0.092 vr=0.98..2022-06-30 c=19942 adx=46 ef/es=-0.159 sl=-0.096 vr=0.97 HIGH_VOL   n=13
+--- 2022-08-15..2022-12-31
+  2022-08-15 c=24094 adx=22 ef/es=+0.003 sl=+0.010 vr=0.07..2022-08-18 c=23200 adx=21 ef/es=+0.002 sl=+0.009 vr=0.00 TREND_UP   n=4
+  2022-08-19 c=20835 adx=21 ef/es=-0.004 sl=+0.005 vr=0.26..2022-08-19 c=20835 adx=21 ef/es=-0.004 sl=+0.005 vr=0.26 CRISIS     n=1
+  2022-08-20 c=21141 adx=21 ef/es=-0.009 sl=+0.000 vr=0.26..2022-08-20 c=21141 adx=21 ef/es=-0.009 sl=+0.000 vr=0.26 RANGE      n=1
+  2022-08-21 c=21515 adx=21 ef/es=-0.012 sl=-0.004 vr=0.28..2022-08-24 c=21366 adx=20 ef/es=-0.020 sl=-0.018 vr=0.28 TREND_DOWN n=4
+  2022-08-25 c=21562 adx=20 ef/es=-0.022 sl=-0.021 vr=0.26..2022-08-25 c=21562 adx=20 ef/es=-0.022 sl=-0.021 vr=0.26 RANGE      n=1
+  2022-08-26 c=20236 adx=20 ef/es=-0.026 sl=-0.027 vr=0.44..2022-10-02 c=19056 adx=20 ef/es=-0.042 sl=-0.027 vr=0.31 TREND_DOWN n=38
+  2022-10-03 c=19626 adx=19 ef/es=-0.040 sl=-0.025 vr=0.02..2022-11-08 c=18545 adx=20 ef/es=+0.004 sl=+0.008 vr=0.42 RANGE      n=37
+  2022-11-09 c=15905 adx=22 ef/es=-0.008 sl=-0.001 vr=0.88..2022-11-09 c=15905 adx=22 ef/es=-0.008 sl=-0.001 vr=0.88 CRISIS     n=1
+  2022-11-10 c=17605 adx=24 ef/es=-0.014 sl=-0.007 vr=0.95..2022-11-13 c=16335 adx=30 ef/es=-0.034 sl=-0.026 vr=0.95 HIGH_VOL   n=4
+  2022-11-14 c=16620 adx=32 ef/es=-0.039 sl=-0.034 vr=0.94..2022-12-20 c=16894 adx=20 ef/es=-0.028 sl=-0.012 vr=0.10 TREND_DOWN n=37
+  2022-12-21 c=16830 adx=20 ef/es=-0.027 sl=-0.012 vr=0.09..2022-12-31 c=16545 adx=19 ef/es=-0.024 sl=-0.014 vr=0.08 RANGE      n=11
+--- 2023-07-01..2023-08-15
+  2023-07-01 c=30594 adx=34 ef/es=+0.036 sl=+0.042 vr=0.38..2023-07-29 c=29349 adx=20 ef/es=+0.012 sl=+0.002 vr=0.07 TREND_UP   n=29
+  2023-07-30 c=29284 adx=19 ef/es=+0.011 sl=+0.002 vr=0.06..2023-08-15 c=29206 adx=13 ef/es=+0.002 sl=+0.001 vr=0.01 RANGE      n=17
