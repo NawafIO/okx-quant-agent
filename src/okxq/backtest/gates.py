@@ -27,13 +27,13 @@ from enum import StrEnum
 from statistics import NormalDist
 
 from okxq.backtest import metrics as m
-from okxq.backtest.types import G9_STRESS
+from okxq.backtest.types import G9_STRESS, Provenance
 from okxq.errors import SafetyError
 
 EULER_GAMMA = 0.5772156649015329
 
 #: SHA-256 of ``FrozenGates().canonical_json()``. Frozen at M2.
-PINNED_GATES_SHA256 = "48908f93c671a07134f1852e09f3773f99a7f2e8f3b58d07932d7c69591cbd0f"
+PINNED_GATES_SHA256 = "9066dca9f14b4003f8b45658c89e6761b40700b5d04cd5b23c2e816290d52b79"
 
 
 class GateTamperError(SafetyError):
@@ -80,6 +80,9 @@ class FrozenGates:
     # Sealed holdout: open-ended, so archives appended later stay sealed too (A-3).
     holdout_start_utc: str = "2025-10-01T00:00:00+00:00"
     holdout_must_pass: tuple[str, ...] = ("G-1", "G-3", "G-4", "G-7", "G-9")
+    # The holdout run IS the Research->DEMO decision: it is INVALID on any fee schedule that
+    # was not measured (closing-audit finding M-1; the user's rates are the SPOT schedule).
+    holdout_requires_measured_fees: bool = True
 
     def __post_init__(self) -> None:
         # A researcher cannot build a lenient copy: any FrozenGates whose definitions differ
@@ -185,6 +188,9 @@ class GateInputs:
     trials: TrialStats
     stressed_full: RunSummary
     stressed_oos: RunSummary
+    #: Recorded on the report, so every verdict says what costs it was priced at.
+    fee_provenance: str = ""
+    cost_config_sha: str = ""
 
 
 @dataclass(frozen=True)
@@ -195,6 +201,8 @@ class GateReport:
     trial_chain_head: str
     n_trials: int
     stressed: tuple[GateOutcome, ...] = field(default=())
+    fee_provenance: str = ""
+    cost_config_sha: str = ""
 
     def failed(self) -> list[str]:
         return [o.gate for o in self.outcomes if o.status is not Status.PASS]
@@ -382,8 +390,11 @@ def _verdict(outcomes: Sequence[GateOutcome]) -> Verdict:
 
 
 def evaluate(inputs: GateInputs) -> GateReport:
+    """Evaluate G-1..G-9. Any FAIL discards; any INVALID makes the strategy not evaluable.
+
+    Research may run on assumed fees, so this records their provenance but does not refuse
+    them; the PROMOTION decision (:func:`evaluate_holdout`) does."""
     g = FROZEN
-    """Evaluate G-1..G-9. Any FAIL discards; any INVALID makes the strategy not evaluable."""
     stressed = tuple(
         o
         for o in (
@@ -420,6 +431,8 @@ def evaluate(inputs: GateInputs) -> GateReport:
         trial_chain_head=inputs.trials.chain_head,
         n_trials=inputs.trials.n_trials,
         stressed=stressed,
+        fee_provenance=inputs.fee_provenance,
+        cost_config_sha=inputs.cost_config_sha,
     )
 
 
@@ -431,10 +444,19 @@ def _verdict_status(bad: Sequence[GateOutcome]) -> Status:
     return Status.PASS
 
 
-def evaluate_holdout(run: RunSummary, stressed: RunSummary) -> GateReport:
+def evaluate_holdout(
+    run: RunSummary,
+    stressed: RunSummary,
+    *,
+    fee_provenance: Provenance | str,
+    cost_config_sha: str,
+) -> GateReport:
     """The single holdout read. Must pass G-1, G-3 (a 10-trade "pass" means nothing), the OOS
     PF floor G-4 and concentration G-7, and still pass them under G-9 cost stress. If it
-    fails, the strategy is dead - never re-tuned on the holdout."""
+    fails, the strategy is dead - never re-tuned on the holdout.
+
+    It is the promotion decision, so it is INVALID unless the fees it was priced at were
+    MEASURED: a strategy cannot be promoted on an assumed fee schedule."""
     g = FROZEN
     base = (g1(run), g3(run), g4(run), g7(run, run))
     under_stress = (g1(stressed), g3(stressed), g4(stressed), g7(stressed, stressed))
@@ -445,5 +467,22 @@ def evaluate_holdout(run: RunSummary, stressed: RunSummary) -> GateReport:
         "; ".join(f"{o.gate} {o.status}: {o.observed}" for o in bad) or "all held",
         g.g9_stress,
     )
-    outcomes = tuple(o for o in (*base, g9) if o.gate in g.holdout_must_pass)
-    return GateReport(outcomes, _verdict(outcomes), g.sha256(), "", 0, stressed=under_stress)
+    measured = str(fee_provenance) == Provenance.MEASURED.value
+    fees = GateOutcome(
+        "PROMOTION-FEES",
+        Status.PASS if measured or not g.holdout_requires_measured_fees else Status.INVALID,
+        str(fee_provenance),
+        Provenance.MEASURED.value,
+        "" if measured else "promotion on an unmeasured fee schedule is not evaluable",
+    )
+    outcomes = (*(o for o in (*base, g9) if o.gate in g.holdout_must_pass), fees)
+    return GateReport(
+        outcomes,
+        _verdict(outcomes),
+        g.sha256(),
+        "",
+        0,
+        stressed=under_stress,
+        fee_provenance=str(fee_provenance),
+        cost_config_sha=cost_config_sha,
+    )

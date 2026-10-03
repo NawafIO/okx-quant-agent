@@ -195,19 +195,35 @@ def test_g9_checks_the_oos_gate_under_stress() -> None:
 # --- holdout -----------------------------------------------------------------------------
 
 
+def hold(run: RunSummary, stressed: RunSummary, prov: str = "MEASURED") -> g.GateReport:
+    return g.evaluate_holdout(run, stressed, fee_provenance=prov, cost_config_sha="c" * 64)
+
+
 def test_holdout_evaluation() -> None:
-    assert g.evaluate_holdout(GOOD, GOOD).verdict is Verdict.ACCEPT
+    assert hold(GOOD, GOOD).verdict is Verdict.ACCEPT
     few = RunSummary.of(GOOD_PNLS[:10], GOOD_CURVE)
-    assert g.evaluate_holdout(few, few).verdict is Verdict.INVALID
+    assert hold(few, few).verdict is Verdict.INVALID
 
 
 def test_holdout_must_survive_concentration_and_cost_stress() -> None:
     """Checkpoint-3 finding 10: the promotion decision includes G-7 and G-9."""
     lucky = RunSummary.of([D(100)] + [D(1)] * 59 + [D(-1)] * 40, GOOD_CURVE)
-    r = g.evaluate_holdout(lucky, lucky)
+    r = hold(lucky, lucky)
     assert r.verdict is Verdict.DISCARD
     assert {o.gate for o in r.outcomes if o.status is Status.FAIL} >= {"G-7"}
     fragile = RunSummary.of([D(3)] * 40 + [D(-2)] * 60, GOOD_CURVE)  # PF 1.0 under stress
-    r = g.evaluate_holdout(GOOD, fragile)
+    r = hold(GOOD, fragile)
     assert r.verdict is Verdict.DISCARD
     assert {o.gate: o.status for o in r.outcomes}["G-9"] is Status.FAIL
+
+
+def test_promotion_is_not_evaluable_on_assumed_fees() -> None:
+    """Closing-audit finding M-1: a strategy that clears every holdout gate is still not
+    promotable when it was priced on a fee schedule nobody measured."""
+    r = hold(GOOD, GOOD, prov="UNMEASURED_ASSUMPTION")
+    assert r.verdict is Verdict.INVALID
+    assert status(r, "PROMOTION-FEES") is Status.INVALID
+    assert r.fee_provenance == "UNMEASURED_ASSUMPTION"
+    assert r.cost_config_sha == "c" * 64
+    assert hold(GOOD, GOOD).verdict is Verdict.ACCEPT
+    assert g.FROZEN.holdout_requires_measured_fees is True

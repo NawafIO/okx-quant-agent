@@ -17,7 +17,7 @@ from okxq.backtest.gates import FROZEN, PINNED_GATES_SHA256, FrozenGates, GateTa
 pytestmark = pytest.mark.guard
 
 #: SHA-256 of FrozenGates().canonical_json(), frozen at M2 (2026-10-03).
-PINNED_SHA256 = "48908f93c671a07134f1852e09f3773f99a7f2e8f3b58d07932d7c69591cbd0f"
+PINNED_SHA256 = "9066dca9f14b4003f8b45658c89e6761b40700b5d04cd5b23c2e816290d52b79"
 
 
 def test_gate_definitions_match_the_frozen_pin() -> None:

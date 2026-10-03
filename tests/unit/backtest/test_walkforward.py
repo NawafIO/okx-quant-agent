@@ -158,6 +158,9 @@ def test_protocol_counts_every_configuration_it_evaluated(tmp_path: Path) -> Non
     assert result.report.n_trials == 19
     assert {o.gate for o in result.report.outcomes} == {f"G-{i}" for i in range(1, 10)}
     assert result.report.gates_sha256 == FROZEN.sha256()
+    # Every verdict records what it was priced at (M-1).
+    assert result.report.fee_provenance == "SYNTHETIC"
+    assert len(result.report.cost_config_sha) == 64
     # A random walk has no edge; whatever the verdict, it must not be ACCEPT.
     assert result.report.verdict is not Verdict.ACCEPT
 

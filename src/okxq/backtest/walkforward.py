@@ -22,6 +22,7 @@ from decimal import ROUND_HALF_UP, Decimal
 from typing import Any, Protocol
 
 from okxq.backtest import metrics as m
+from okxq.backtest.costs import cost_config_sha
 from okxq.backtest.engine import BacktestEngine, BacktestResult, EngineConfig, Strategy
 from okxq.backtest.gates import (
     FROZEN,
@@ -331,6 +332,8 @@ class ResearchProtocol:
             trials=self._trials.stats(),
             stressed_full=stressed_full,
             stressed_oos=stressed_wf.oos,
+            fee_provenance=str(self._config.fees.provenance),
+            cost_config_sha=cost_config_sha(self._config),
         )
         return ProtocolResult(evaluate(inputs), final.params if final else None, wf)
 
