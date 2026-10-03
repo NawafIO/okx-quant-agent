@@ -94,7 +94,8 @@ class StrategyContext:
 
 
 class Strategy(Protocol):
-    strategy_id: str
+    @property
+    def strategy_id(self) -> str: ...
 
     def on_bar(self, ctx: StrategyContext) -> Sequence[OrderIntent]: ...
 

@@ -23,7 +23,8 @@ class SizeDecision:
 
 
 class Sizer(Protocol):
-    sizer_id: str
+    @property
+    def sizer_id(self) -> str: ...
 
     def size(
         self,
