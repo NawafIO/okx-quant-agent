@@ -1,0 +1,65 @@
+vol_compression_breakout version 8dec27355fd6; grid 8; span 2020-07-01..2025-09-30; sizing e32046ed9bbc; trials before this run 851
+
+VERDICT DISCARD   (N trials now 1302; this run added 451)
+fees UNMEASURED_ASSUMPTION; cost 546f4fbccdb5; sizing e32046ed9bbc; gates 9066dca9f14b
+  G-1   FAIL     observed 0.3196703032936842061535150242  limit <= 0.15  
+  G-2   FAIL     observed 0.8095403709718954518570490850  limit >= 1.5  
+  G-3   PASS     observed 442  limit >= 100  
+  G-4   FAIL     observed 0.7638074697299506890364596228  limit >= 1.2  
+  G-5   PASS     observed OOS 0.7638074697299506890364596228 / IS 0.8504452434477566269689438533 = 0.8981265703050191149408290044  limit >= 0.5 x IS  
+  G-6   FAIL     observed 0/16 held  limit PF >= 1.2 and MaxDD <= 0.15 for every +/-0.20  bb_k x0.80: PF 0.7638074697299506890364596228 DD 0.7537533224141085067129564931; bb_k x1.20: PF 0.7638074697299506890364596228 DD 0.7537533224141085067129564931; bb_n x0.80: PF 0.7531326814981578622492401895 DD 0.7227510910049387267603162374; bb_n x1.20: PF 0.8372368008124246315714597006 DD 0.6407286886988450881017853009; range_bars x0.80: PF 0.7200659936613931266264734126 DD 0.8765330449146647227796445886; range_bars x1.20: PF 0.7778889898993953766452476955 DD 0.6483381397870747681200640647; rank_bars x0.80: PF 0.8116470757381552221239552013 DD 0.6605295617382680683550920814; rank_bars x1.20: PF 0.7503371328142966202554366890 DD 0.7593827461201401916160201318; squeeze_q x0.80: PF 0.7938973492331080387420196121 DD 0.6516815576187781097294720158; squeeze_q x1.20: PF 0.7740238231012768709333164944 DD 0.7637408074455242206409906057; target_r x0.80: PF 0.7500099349651598370258247520 DD 0.7669568776228059511784506560; target_r x1.20: PF 0.7620742267182866152481599071 DD 0.7565700342915221363477065298; time_stop_bars x0.80: PF 0.7912234371721946413176549516 DD 0.7341991011509688653519423541; time_stop_bars x1.20: PF 0.7490469456121429978212697353 DD 0.7800085335391780879976099375; warmup_bars x0.80: PF 0.7638074697299506890364596228 DD 0.7537533224141085067129564931; warmup_bars x1.20: PF 0.7638074697299506890364596228 DD 0.7537533224141085067129564931
+  G-7   INVALID  observed net profit not positive  limit top 5 <= 0.5 of net profit  
+  G-8   FAIL     observed 0.000000  limit >= 0.95 (N=1302)  
+  G-9   FAIL     observed G-1 FAIL: 0.4852213444215976198493512939; G-2 FAIL: 0.6294034469261356148787046617; G-4 FAIL: 0.5923282794317208761081422736; G-7 INVALID: net profit not positive  limit fees x2, slippage x2, funding paid x2, funding received x0.5  
+  G-9 under stress: G-1 FAIL observed 0.4852213444215976198493512939
+  G-9 under stress: G-2 FAIL observed 0.6294034469261356148787046617
+  G-9 under stress: G-3 PASS observed 442
+  G-9 under stress: G-4 FAIL observed 0.5923282794317208761081422736
+  G-9 under stress: G-7 INVALID observed net profit not positive
+final params (full-span selection): {'bb_n': 20, 'bb_k': 2.0, 'rank_bars': 2160, 'squeeze_q': 0.05, 'range_bars': 24, 'target_r': 3.0, 'time_stop_bars': 48, 'warmup_bars': 3000}
+
+walk-forward: 17 folds, 17 with a selection; 1666 OOS trades
+  fold  0 test 2021-07-01:   163 trades, net     -4377.76, params {'bb_n': 20, 'bb_k': 2.0, 'rank_bars': 2160, 'squeeze_q': 0.1, 'range_bars': 12, 'target_r': 3.0, 'time_stop_bars': 48, 'warmup_bars': 3000}
+  fold  1 test 2021-10-01:   195 trades, net    -18407.11, params {'bb_n': 20, 'bb_k': 2.0, 'rank_bars': 2160, 'squeeze_q': 0.1, 'range_bars': 12, 'target_r': 3.0, 'time_stop_bars': 48, 'warmup_bars': 3000}
+  fold  2 test 2022-01-01:   130 trades, net     -6334.75, params {'bb_n': 20, 'bb_k': 2.0, 'rank_bars': 2160, 'squeeze_q': 0.1, 'range_bars': 24, 'target_r': 3.0, 'time_stop_bars': 48, 'warmup_bars': 3000}
+  fold  3 test 2022-04-01:    43 trades, net     -1826.78, params {'bb_n': 20, 'bb_k': 2.0, 'rank_bars': 2160, 'squeeze_q': 0.05, 'range_bars': 24, 'target_r': 3.0, 'time_stop_bars': 48, 'warmup_bars': 3000}
+  fold  4 test 2022-07-01:    80 trades, net    -10072.91, params {'bb_n': 20, 'bb_k': 2.0, 'rank_bars': 2160, 'squeeze_q': 0.05, 'range_bars': 24, 'target_r': 3.0, 'time_stop_bars': 48, 'warmup_bars': 3000}
+  fold  5 test 2022-10-01:   143 trades, net     -2399.48, params {'bb_n': 20, 'bb_k': 2.0, 'rank_bars': 2160, 'squeeze_q': 0.1, 'range_bars': 24, 'target_r': 3.0, 'time_stop_bars': 48, 'warmup_bars': 3000}
+  fold  6 test 2023-01-01:    70 trades, net      4270.82, params {'bb_n': 20, 'bb_k': 2.0, 'rank_bars': 2160, 'squeeze_q': 0.1, 'range_bars': 24, 'target_r': 3.0, 'time_stop_bars': 48, 'warmup_bars': 3000}
+  fold  7 test 2023-04-01:   137 trades, net    -15191.24, params {'bb_n': 20, 'bb_k': 2.0, 'rank_bars': 2160, 'squeeze_q': 0.1, 'range_bars': 24, 'target_r': 3.0, 'time_stop_bars': 48, 'warmup_bars': 3000}
+  fold  8 test 2023-07-01:    95 trades, net    -11453.89, params {'bb_n': 20, 'bb_k': 2.0, 'rank_bars': 2160, 'squeeze_q': 0.1, 'range_bars': 24, 'target_r': 3.0, 'time_stop_bars': 48, 'warmup_bars': 3000}
+  fold  9 test 2023-10-01:    25 trades, net      2091.89, params {'bb_n': 20, 'bb_k': 2.0, 'rank_bars': 2160, 'squeeze_q': 0.1, 'range_bars': 24, 'target_r': 3.0, 'time_stop_bars': 48, 'warmup_bars': 3000}
+  fold 10 test 2024-01-01:    88 trades, net     -1945.34, params {'bb_n': 20, 'bb_k': 2.0, 'rank_bars': 2160, 'squeeze_q': 0.1, 'range_bars': 24, 'target_r': 3.0, 'time_stop_bars': 48, 'warmup_bars': 3000}
+  fold 11 test 2024-04-01:   126 trades, net     -1390.59, params {'bb_n': 20, 'bb_k': 2.0, 'rank_bars': 2160, 'squeeze_q': 0.1, 'range_bars': 24, 'target_r': 3.0, 'time_stop_bars': 48, 'warmup_bars': 3000}
+  fold 12 test 2024-07-01:    78 trades, net     -2138.71, params {'bb_n': 20, 'bb_k': 2.0, 'rank_bars': 2160, 'squeeze_q': 0.1, 'range_bars': 24, 'target_r': 3.0, 'time_stop_bars': 48, 'warmup_bars': 3000}
+  fold 13 test 2024-10-01:    39 trades, net     -1825.46, params {'bb_n': 20, 'bb_k': 2.0, 'rank_bars': 2160, 'squeeze_q': 0.05, 'range_bars': 24, 'target_r': 1.5, 'time_stop_bars': 48, 'warmup_bars': 3000}
+  fold 14 test 2025-01-01:    67 trades, net      1687.27, params {'bb_n': 20, 'bb_k': 2.0, 'rank_bars': 2160, 'squeeze_q': 0.05, 'range_bars': 24, 'target_r': 1.5, 'time_stop_bars': 48, 'warmup_bars': 3000}
+  fold 15 test 2025-04-01:   105 trades, net     -2457.27, params {'bb_n': 20, 'bb_k': 2.0, 'rank_bars': 2160, 'squeeze_q': 0.1, 'range_bars': 24, 'target_r': 3.0, 'time_stop_bars': 48, 'warmup_bars': 3000}
+  fold 16 test 2025-07-01:    82 trades, net     -1454.16, params {'bb_n': 20, 'bb_k': 2.0, 'rank_bars': 2160, 'squeeze_q': 0.05, 'range_bars': 24, 'target_r': 3.0, 'time_stop_bars': 48, 'warmup_bars': 3000}
+
+OOS attribution (gross includes slippage; net = gross + fees + funding):
+  instrument      side       n      gross      fees      slip   funding        net  PF
+  BTC-USDT-SWAP   LONG     107      -5221     -3557     -1005      -593      -9371  0.606
+  BTC-USDT-SWAP   SHORT    100      -3872     -2898      -764      -180      -6949  0.670
+  DOGE-USDT-SWAP  LONG      92       -622     -1727     -1300      -322      -2671  0.843
+  DOGE-USDT-SWAP  SHORT    115       3199     -1952     -1647      -266        980  1.057
+  ETH-USDT-SWAP   LONG     102       -639     -2598      -596      -410      -3647  0.821
+  ETH-USDT-SWAP   SHORT    110      -6758     -2431      -538      -264      -9453  0.571
+  NEAR-USDT-SWAP  LONG     103        651     -1413     -2266      -250      -1011  0.948
+  NEAR-USDT-SWAP  SHORT    122      -3215     -1464     -2537      -832      -5510  0.725
+  SAND-USDT-SWAP  LONG      94      -1975     -1304     -1688      -256      -3535  0.769
+  SAND-USDT-SWAP  SHORT     93       3530     -1219     -1409    -25293     -22983  0.184
+  SOL-USDT-SWAP   LONG      92       4126     -1332     -1213      -261       2532  1.199
+  SOL-USDT-SWAP   SHORT    102       2361     -1313     -1349      -334        714  1.050
+  UNI-USDT-SWAP   LONG     116      -1487     -1889     -2364      -379      -3755  0.815
+  UNI-USDT-SWAP   SHORT    107       -745     -1607     -2054      -321      -2673  0.860
+  XRP-USDT-SWAP   LONG      91       4885     -1910     -1821      -352       2624  1.168
+  XRP-USDT-SWAP   SHORT    120      -5250     -2601     -2685      -666      -8517  0.637
+  ALL             BOTH    1666     -11033    -31214    -25235    -30978     -73225  0.764
+  ALL             LONG     797       -282    -15730    -12252     -2822     -18834  0.870
+  ALL             SHORT    869     -10751    -15484    -12983    -28156     -54391  0.671
+  BTC+ETH only             419                                              -29421  0.663
+  funding cash flow -30978, of which funding-bound-v1 -30978: BTC -773, DOGE -588, ETH -674, NEAR -1081, SAND -25549, SOL -596, UNI -700, XRP -1017
+
+SURVIVORSHIP (V-14): the universe contains only instruments still listed in 2026; delisted perpetuals (e.g. LUNA, FTT) cannot be obtained from OKX. Results are biased UPWARD by an unknown amount, so a pass is weaker evidence than the gates imply. See the per-instrument breakdown and the BTC+ETH-only line.
+exit=0
