@@ -60,11 +60,13 @@ def test_the_risk_coverage_config_is_pinned_and_excludes_nothing() -> None:
 
 def test_ci_runs_the_risk_coverage_gate_exactly() -> None:
     ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    ci = ci.replace("\r\n", "\n")
     assert f"run: uv run pytest {RISK_COVERAGE_ARGS} --cov-report=term-missing" in ci
 
 
 def test_verify_ps1_runs_the_gate_and_skipcoverage_cannot_skip_it() -> None:
-    ps = (ROOT / "scripts" / "verify.ps1").read_text(encoding="utf-8")
+    # .gitattributes checks .ps1 out with CRLF on Windows, where verify.ps1 actually runs.
+    ps = (ROOT / "scripts" / "verify.ps1").read_text(encoding="utf-8").replace("\r\n", "\n")
     args = ", ".join(f"'{a}'" for a in ["-m", "pytest", *RISK_COVERAGE_ARGS.split()])
     assert args in ps
     skip_block_end = ps.index("\n}\n", ps.index("if ($SkipCoverage)"))
