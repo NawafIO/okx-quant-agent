@@ -12,7 +12,9 @@ Status: trial log **N = 1,302**. Holdout sealed. PHASE 2. No cycle-2 trial has r
 
 Advisor review of 7ae7250: **PROCEED WITH CHANGES** (§8). The four blocking findings are folded in below. btc_lead_lag at 1h: **STOP**, agreed.
 
-## 0. The owner's decision still open: the D1 re-run
+## 0. D1 re-run: DECIDED by the owner, SKIP (0 trials), 2026-10-03
+
+**Owner's decision:** "Skip re-running the M4 baselines (0 trials). Funding costs remain the bottleneck." It is recorded on the PAPER audit chain (`owner_decision`) and in the ledger snapshot. The analysis that informed it follows.
 
 **My recommendation: do not re-run the M4 baselines in cycle 2.** It is the owner's call (advisor B-4): the M4 closing-audit ruling was advice on trial budget, not a veto. The predictable outcome, stated plainly:
 - Cycle 2 changes fees, spreads and risk limits. It does **not** change funding-bound-v1, which is the dominant cost of the baselines. [Likely] No baseline can turn positive:
@@ -157,3 +159,68 @@ Expected N after cycle 2, without a baseline re-run: about 1,530 plus the window
 | Collector: global ok; non-integer seqId crashed the run | Fixed, with tests: per-instrument judgement; seqId → BookError gap line |
 | Collector: Windows paths unverified | The 14-day clock waits for the owner's `-Status` evidence |
 | Over-claims: G-8 "well-powered", trade count ignoring RC-13, the SAND/NEAR cap-size claim, V-15 certainty, r_first "log" with a simple formula, the N estimate | Corrected in each document |
+
+## 9. Track 1: intraday session framework (DRAFT for advisor review; owner direction 2026-10-03)
+
+**Owner direction:**
+- short-term intraday only, with holds of 2–6 h;
+- strictly flat before every funding settlement;
+- asymmetric setups (volatility expansion, breakout, momentum surge) with tight stops and a 1.5–3.0% target;
+- funding zero by construction.
+
+The candidates are `docs/strategies/session_orb.md`, `squeeze_expansion_intraday.md` and `impulse_continuation.md`.
+
+### 9.1 Shared rules (every Track-1 candidate)
+
+- **Bars.** 1h only. slip-v2 is calibrated on 1h, and 5m exists for BTC, ETH and SOL only.
+- **Sessions.** Three 8 h blocks between settlements: 00–08, 08–16, 16–24 UTC.
+- **Forced exit.** Decided at T = block end − 1 h and filled at that bar's open (07:00, 15:00, 23:00). Flat at every settlement by construction. Live, the next settlement time must come from `nextFundingTime` (V-15).
+- **Entry window.** No entry unless at least 2 bars remain before the forced exit. Every hold is ≤ 6 bars (`max_hold_bars` = 6, fixed).
+- **Funding.** Zero by construction in research: no position is open at a settlement instant. A test asserts zero funding events on every Track-1 run.
+- **Stops and targets in ATR, not fixed percent.** ATR is the simple mean of 24 true ranges (finite memory; the B-2 lesson).
+  - A fixed 1.5–3.0% means very different things on BTC and SAND. [Guessing, from the measured 22:00 E|r| of 39–86 bp] ATR_1h is roughly 50–110 bp across the universe, so a target of 2–3 ATR ≈ **1.0–3.3%**, which brackets the owner's band.
+  - The implied percentage is reported per instrument.
+- **Stop.** 1.0 ATR, fixed, at least 2× the SZ-2 floor (0.5 × Wilder ATR(14)), so M5 rarely refuses on stop width.
+- **Target.** Grid {2, 3} ATR on every candidate. It is a resting **maker** order (2 bp) and needs a strict trade-through (A-9).
+- **Priority** (declared): the candidate's signal strength in ATR or σ units; ties broken by the hash shuffle.
+- **Every Track-1 run is under the full D3 gate.** With the cluster cap at 3 and RC-14 at 3 per hour, session-open breakouts that co-move with BTC compete for 3 slots.
+
+### 9.2 Why "tight stops" is the wrong lever under this cost model (owner please read)
+
+[Certain, engine.py `_intrabar`, costs.py]
+- **Stop overshoot.** Every stop fills 0.2 σ_1h **beyond** its level. That is a constant fraction of a volatility-scaled stop: at 1.0 ATR ≈ 1.2 σ [Guessing], a loss is about **1.17 R before fees**. At 0.5 ATR it would be about 1.33 R.
+- **Fees in R.** Fees are charged on notional, and notional grows as the stop tightens (risk is fixed at 0.5% of equity). Fees in R = 10 bp / stop distance. On BTC, a 1-ATR stop of about 60 bp gives about **0.17 R** per losing round trip, and a 0.5-ATR stop doubles that.
+- **Same-bar ambiguity.** When a 1h bar contains both the stop and the target, the stop is assumed first. A tighter stop puts more bars in that case, and more profitable trades get recorded as losses.
+- So the asymmetry should come from the **target**, not a tighter stop. Each halving of the stop roughly doubles the fee drag in R and raises the ambiguity rate.
+
+### 9.3 The signal-free feasibility gate for asymmetric brackets (proposal; the advisor sets the threshold)
+
+intraday_momentum's p* formula assumes symmetric payoffs, so it does not apply here. Proposed replacement:
+- **Random-entry bracket baseline.** Entries at uniformly random eligible bars (fixed seed, about 1 entry per instrument-block), with each candidate's exact bracket: 1 ATR stop, 2 or 3 ATR maker target, ≤ 6 bars, and the forced exit.
+  - It runs through the real engine on research data, under measured fees and the current slip-v2 (overstated, so conservative), with the D3 gate on.
+  - With zero edge, gross P&L ≈ 0, so the baseline's mean net R per trade is the **edge the signal has to supply**.
+- **Reported:**
+  - mean net R per trade;
+  - the share of trades exiting by stop, target and time;
+  - the **same-bar ambiguity share**;
+  - RC-13 and other refusals.
+- **The 5m diagnostic, signal-free, on BTC, ETH and SOL.** For ambiguous 1h bars, the share where the 5m path actually reached the target first. This measures the engine's pessimism bias in this design. It is not used to change the engine.
+- **Rule (proposed, advisor to set):** a candidate whose bracket needs **more than 0.30 R per trade** of edge is DISCARDED with no trials.
+- **Trial status:** I propose this baseline is **not** a trial, because it has no signal and selects nothing. The advisor must rule on that, because it is an engine run on research data.
+
+### 9.4 RC-13 vs low-hit-rate designs: an owner decision before any trial
+
+[Certain, `checks.rc13`, `portfolio.py:198`]
+- RC-13 counts consecutive losses **across the whole portfolio**. The count resets **only on a win**, and at three or more, each new loss starts a fresh 24 h cooldown.
+- A bracket with a 2–3 R target is expected to win about 25–35% of the time. Three losses in a row then happen with probability 0.27–0.42 [arithmetic], and after that every loss pauses all trading for 24 h until a win arrives.
+- [Likely] Under the frozen policy, a Track-1 strategy spends most of its time in cooldown. Trade counts would collapse and G-3 could fail for reasons unrelated to edge.
+- This is what live trading would do, so research must mirror it. Options:
+  - **(a) Keep RC-13 frozen.** Accept the low trade counts; the baseline (9.3) measures how many entries it blocks, without a signal.
+  - **(b) Revise the risk policy before any trial,** from first principles, not from results. For example, a cooldown triggered by **R lost** (say 3 R in 24 h) instead of a loss count, or per-symbol counting. This re-pins the RiskPolicy sha, needs advisor review, and applies to every future strategy.
+- **My recommendation:** run the 9.3 baseline under (a) first. It shows the RC-13 blocking rate without any signal, so the owner can decide (b) on that number without having seen a result.
+
+### 9.5 Trial budget
+
+- Three candidates × grid 4 is about 3 × 225 ≈ **675 trials**, plus the pre-registered robustness checks, taking N to about 2,000.
+- I recommend running **at most two** and holding the third (see each rationale's "status" line).
+- Each rationale is pinned before its feasibility baseline runs, as intraday_momentum was.
