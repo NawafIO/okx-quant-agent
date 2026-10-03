@@ -27,10 +27,20 @@ if (-not (Test-Path $py)) {
 
 Set-Location $root
 
+# The argument list must NOT be named $Args: that is a PowerShell automatic variable (the
+# unbound arguments), so a parameter of that name is shadowed, '@Args' splats an EMPTY array
+# and python.exe starts as an interactive REPL instead of running the check. That bug ran
+# every step as a bare REPL on Windows until 2026-10-03. tests/guards/test_verify_ps1.py
+# forbids automatic-variable parameter names in every .ps1.
 function Invoke-Step {
-    param([string]$Name, [string[]]$Args)
+    param([string]$Name, [string[]]$PyArgs)
     Write-Host "`n=== $Name ===" -ForegroundColor Cyan
-    & $py @Args
+    if (-not $PyArgs -or $PyArgs.Count -eq 0) {
+        # Never launch python.exe without arguments: that is an interactive REPL, not a check.
+        Write-Host "FAILED: $Name - no arguments reached Invoke-Step" -ForegroundColor Red
+        exit 2
+    }
+    & $py @PyArgs
     if ($LASTEXITCODE -ne 0) {
         Write-Host "FAILED: $Name" -ForegroundColor Red
         exit $LASTEXITCODE
