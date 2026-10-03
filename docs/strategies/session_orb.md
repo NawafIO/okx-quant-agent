@@ -8,7 +8,7 @@
   - take the direction of the first 5-minute candle;
   - stop on the other side of that candle;
   - target 10× the risk, or the session close.
-- Its edge came from the **shape** of the payoff, not the hit rate. That is exactly the asymmetry the owner wants.
+- Its edge came from the **shape** of the payoff, not the hit rate. That is the asymmetry the owner wants, and **this adaptation cannot reproduce it** within ≤ 5 h holds (see Stop and §9.2a).
 - **Caveats, from the search summaries:**
   - US equities, with a real session open; not crypto.
   - Commission charged, but **no spread and no slippage**.
@@ -72,6 +72,6 @@ The baseline measures the real mix.
 - Per round trip: entry taker 5 bp; exit 2 bp maker at the target or 5 bp taker plus overshoot at a stop or time exit.
 - The required edge per trade comes from the §9.3 baseline.
 - **Falsified by:**
-  - the §9.3 baseline (> 0.30 R needed);
+  - the §9.3 lower-bound baseline (> 0.15 R needed);
   - the `or_bars` + 1 check;
   - any of G-1..G-9. Likeliest: G-2 and G-4 (PF after costs), and G-9 (2× fees).
