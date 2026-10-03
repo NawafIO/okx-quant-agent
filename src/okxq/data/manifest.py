@@ -179,9 +179,19 @@ class Manifest:
                 " year, month, rows, first_ts_ms, last_ts_ms, missing_bars, rejected,"
                 " relative_path, completed_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (
-                    key.dataset, key.inst_id, key.timeframe, key.price_type, key.year,
-                    key.month, rows, first_ts_ms, last_ts_ms, missing_bars, rejected,
-                    relative_path, _now(),
+                    key.dataset,
+                    key.inst_id,
+                    key.timeframe,
+                    key.price_type,
+                    key.year,
+                    key.month,
+                    rows,
+                    first_ts_ms,
+                    last_ts_ms,
+                    missing_bars,
+                    rejected,
+                    relative_path,
+                    _now(),
                 ),
             )
             conn.commit()
@@ -211,8 +221,7 @@ class Manifest:
         """
         with closing(self._connect()) as conn:
             conn.execute(
-                "DELETE FROM gaps WHERE dataset=? AND inst_id=? AND timeframe=? "
-                "AND price_type=?",
+                "DELETE FROM gaps WHERE dataset=? AND inst_id=? AND timeframe=? AND price_type=?",
                 (dataset, inst_id, timeframe, price_type),
             )
             if gaps:

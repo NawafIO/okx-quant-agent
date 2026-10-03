@@ -15,8 +15,7 @@ import uuid
 from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-
-from typing import Any, Protocol
+from typing import Protocol
 
 import duckdb
 
@@ -166,7 +165,7 @@ class Backfiller:
                 bars = self.source.fetch_candles_back_to(
                     fetch_id, timeframe, stop_at_ms=effective_stop, price_type=price_type
                 )
-            except Exception as exc:  # noqa: BLE001 - one bad instrument must not end the run
+            except Exception as exc:  # one bad instrument must not end the run
                 msg = f"{fetch_id} {timeframe} {price_type}: {type(exc).__name__}: {exc}"
                 log.warning("fetch failed", extra={"inst_id": inst_id, "error": msg})
                 stats.errors.append(msg)
@@ -214,9 +213,7 @@ class Backfiller:
                     stats.partitions_skipped += 1
                     continue
 
-                result = self.store.write_ohlcv(
-                    key, month_bars, symbol=symbol, source=SOURCE_OHLCV
-                )
+                result = self.store.write_ohlcv(key, month_bars, symbol=symbol, source=SOURCE_OHLCV)
                 # Recorded only after the atomic rename succeeded.
                 if not is_current:
                     self.manifest.record_partition(
@@ -276,7 +273,7 @@ class Backfiller:
             symbol = str(inst["symbol"])
             try:
                 points = self.source.fetch_funding_all(inst_id)
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:  # one bad instrument must not end the run
                 msg = f"{inst_id} funding: {type(exc).__name__}: {exc}"
                 log.warning("funding fetch failed", extra={"inst_id": inst_id, "error": msg})
                 stats.errors.append(msg)
@@ -354,10 +351,13 @@ def recompute_series_gaps(
     pattern = store.series_glob("ohlcv", inst_id, timeframe, price_type)
     with duckdb.connect() as conn:
         rows = conn.execute(
-            f"SELECT ts_open_ms FROM read_parquet('{pattern}', hive_partitioning=true) "  # noqa: S608
-            "ORDER BY ts_open_ms"
+            "SELECT ts_open_ms FROM read_parquet(?, hive_partitioning=true) ORDER BY ts_open_ms",
+            [str(pattern)],
         ).fetchall()
-    return [(g.start_ms, g.end_ms, g.missing_bars) for g in detect_gaps([int(r[0]) for r in rows], timeframe)]
+    return [
+        (g.start_ms, g.end_ms, g.missing_bars)
+        for g in detect_gaps([int(r[0]) for r in rows], timeframe)
+    ]
 
 
 def new_run_id() -> str:
@@ -369,9 +369,9 @@ def horizon_ms_for_years(now_ms: int, years: float) -> int:
 
 
 __all__ = [
+    "TIMEFRAME_MS",
     "BackfillStats",
     "Backfiller",
-    "TIMEFRAME_MS",
     "group_by_month",
     "horizon_ms_for_years",
     "new_run_id",

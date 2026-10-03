@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from decimal import Decimal
+from itertools import pairwise
 
 from okxq.data.okx_public import TIMEFRAME_MS, Bar
 
@@ -29,7 +30,7 @@ MIN_FUTURE_TOLERANCE_MS = 900_000  # 15 minutes
 
 
 def _future_tolerance_ms(step_ms: int) -> int:
-    """Clock-error tolerance for the future-bar check: one bar, or the floor, whichever is larger."""
+    """Clock-error tolerance for the future-bar check: one bar or the floor, whichever is larger."""
     return max(step_ms, MIN_FUTURE_TOLERANCE_MS)
 
 
@@ -89,8 +90,7 @@ def _ohlc_violation(bar: Bar) -> str | None:
         return f"high {bar.high} < low {bar.low}"
     if bar.high < max(bar.open, bar.close) or bar.low > min(bar.open, bar.close):
         return (
-            f"open/close outside high/low range "
-            f"o={bar.open} h={bar.high} l={bar.low} c={bar.close}"
+            f"open/close outside high/low range o={bar.open} h={bar.high} l={bar.low} c={bar.close}"
         )
     for name, vol in (
         ("volume_contracts", bar.volume_contracts),
@@ -109,7 +109,7 @@ def detect_gaps(timestamps: list[int], timeframe: str) -> list[Gap]:
     """
     step = TIMEFRAME_MS[timeframe]
     gaps: list[Gap] = []
-    for earlier, later in zip(timestamps, timestamps[1:], strict=False):
+    for earlier, later in pairwise(timestamps):
         delta = later - earlier
         if delta > step:
             missing = (delta // step) - 1
@@ -122,9 +122,7 @@ def detect_gaps(timestamps: list[int], timeframe: str) -> list[Gap]:
 
 def _flag_outliers(bars: list[Bar]) -> list[int]:
     """Flag bars whose range dwarfs the median range. Flagged, not removed."""
-    spans = sorted(
-        (b.high - b.low) for b in bars if b.high is not None and b.low is not None
-    )
+    spans = sorted((b.high - b.low) for b in bars if b.high is not None and b.low is not None)
     if len(spans) < 20:
         return []
     median = spans[len(spans) // 2]

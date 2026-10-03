@@ -71,8 +71,7 @@ def cmd_backfill(args: argparse.Namespace) -> int:
     stats = BackfillStats()
 
     horizon = horizon_ms_for_years(now, args.years)
-    print(f"\nhorizon: {datetime.fromtimestamp(horizon / 1000, tz=UTC):%Y-%m-%d} "
-          f"({args.years}y)")
+    print(f"\nhorizon: {datetime.fromtimestamp(horizon / 1000, tz=UTC):%Y-%m-%d} ({args.years}y)")
 
     # --funding-only is how the scheduled archive runs (prerequisite P-11): OKX retains
     # ~95 days of realised funding on a rolling window, so this must run regularly and
@@ -98,9 +97,7 @@ def cmd_backfill(args: argparse.Namespace) -> int:
             if not subset:
                 continue
             print(f"\n=== {price_type} candles 1h ({len(subset)} instruments) ===")
-            phase = backfiller.run_ohlcv(
-                subset, "1h", horizon_ms=horizon, price_type=price_type
-            )
+            phase = backfiller.run_ohlcv(subset, "1h", horizon_ms=horizon, price_type=price_type)
             print(f"  {phase.summary()}")
             stats.merge(phase)
 

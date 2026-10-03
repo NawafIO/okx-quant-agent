@@ -217,7 +217,7 @@ class ParquetStore:
             return 0
         with duckdb.connect() as conn:
             row = conn.execute(
-                f"SELECT COUNT(*) FROM read_parquet('{pattern}', hive_partitioning=true)"
+                "SELECT COUNT(*) FROM read_parquet(?, hive_partitioning=true)", [pattern]
             ).fetchone()
         return int(row[0]) if row else 0
 
@@ -235,9 +235,15 @@ def register_views(db_path: Path, store: ParquetStore, datasets: tuple[str, ...]
             files = list(store.root.joinpath(dataset).rglob("*.parquet"))
             if not files:
                 continue
+            # A view body cannot hold a bound parameter, so the path is inlined as a quoted
+            # literal. Both inputs are ours (a fixed dataset name and a local path); the quote
+            # escaping is for paths like C:\\Users\\O'Brien, not for untrusted input.
+            if not dataset.isidentifier():
+                raise ValueError(f"dataset name is not a SQL identifier: {dataset!r}")
+            literal = str(store.glob(dataset)).replace("'", "''")
             conn.execute(
-                f"CREATE OR REPLACE VIEW {dataset} AS "
-                f"SELECT * FROM read_parquet('{store.glob(dataset)}', hive_partitioning=true)"
+                f"CREATE OR REPLACE VIEW {dataset} AS "  # noqa: S608 - see comment above
+                f"SELECT * FROM read_parquet('{literal}', hive_partitioning=true)"
             )
             created.append(dataset)
     return created

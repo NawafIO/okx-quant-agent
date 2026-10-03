@@ -310,3 +310,27 @@ def test_funding_round_trip(store: ParquetStore) -> None:
     assert table.column("funding_time").to_pylist()[0] == datetime.fromtimestamp(
         BASE / 1000, tz=UTC
     )
+
+
+def test_duckdb_reads_survive_a_quote_in_the_store_path(tmp_path: Path) -> None:
+    """The store path reaches DuckDB as SQL. An apostrophe in it (C:\\Users\\O'Brien) must not
+    break the query: reads bind the path as a parameter, the view escapes it as a literal."""
+    import duckdb
+
+    from okxq.data.backfill import recompute_series_gaps
+
+    store = ParquetStore(tmp_path / "o'brien" / "parquet")
+    bars = make_bars(10)
+    del bars[3:6]  # three missing hours
+    store.write_ohlcv(KEY, bars, symbol="BTC/USDT:USDT", source="test")
+
+    assert store.row_count("ohlcv") == 7
+    assert recompute_series_gaps(store, "BTC-USDT-SWAP", "1h") == [
+        (BASE + 3 * HOUR, BASE + 5 * HOUR, 3)
+    ]
+    db = tmp_path / "analytics.db"
+    assert register_views(db, store, ("ohlcv",)) == ["ohlcv"]
+    with duckdb.connect(str(db)) as conn:
+        row = conn.execute("SELECT COUNT(*) FROM ohlcv").fetchone()
+    assert row is not None
+    assert row[0] == 7
