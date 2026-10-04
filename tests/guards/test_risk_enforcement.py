@@ -213,10 +213,25 @@ def test_nothing_outside_the_kill_switch_references_disarm() -> None:
 # --- one ingest path (closing audit #4) ------------------------------------------------------
 
 
+#: Modules allowed to apply portfolio events. EXACTLY these two, pinned.
+#: * risk/store.py - the live path, reached only through cycle.ingest, which latches halts.
+#: * backtest/riskgate.py - the cycle-2 research risk gate (owner decision D3). Added
+#:   2026-10-04 with the advisor's sign-off as a SCOPE CLARIFICATION, not a weakening: this
+#:   guard protects the live path (no event persisted without halts latched); the research
+#:   gate persists nothing and evaluates halt_triggers after every apply. Its own guards are
+#:   in tests/guards/test_research_riskgate.py (no store, kill switch, audit chain, sqlite or
+#:   file writes; imported only from okxq/backtest and scripts; halts after every apply).
+APPLY_ALLOWED = frozenset({"risk/store.py", "backtest/riskgate.py"})
+
+
 def test_only_the_store_applies_events_and_only_cycle_ingests() -> None:
-    """Nothing persists or applies a portfolio event except store.py (called through
-    cycle.ingest, which latches halts). A name-level tripwire: it cannot see a store passed
-    in as an untyped object, which is why ``ingest`` is the documented single entry."""
+    """Nothing persists or applies a portfolio event except the pinned allow-list (the live
+    store, called through cycle.ingest, which latches halts; and the in-memory research gate).
+    A name-level tripwire: it cannot see a store passed in as an untyped object, which is why
+    ``ingest`` is the documented single entry. Importing the portfolio MODULE whole is also
+    refused outside the allow-list - ``portfolio.apply`` would otherwise slip past the name
+    check (tightened 2026-10-04)."""
+    assert frozenset({"risk/store.py", "backtest/riskgate.py"}) == APPLY_ALLOWED
     offenders = []
     for path in sorted(OKXQ.rglob("*.py")):
         rel = path.relative_to(OKXQ).as_posix()
@@ -225,9 +240,18 @@ def test_only_the_store_applies_events_and_only_cycle_ingests() -> None:
                 isinstance(n, ast.ImportFrom)
                 and n.module == "okxq.risk.portfolio"
                 and any(a.name == "apply" for a in n.names)
-                and rel != "risk/store.py"
+                and rel not in APPLY_ALLOWED
             ):
                 offenders.append(f"{rel}: imports apply")
+            whole = (
+                isinstance(n, ast.ImportFrom)
+                and n.module == "okxq.risk"
+                and any(a.name == "portfolio" for a in n.names)
+            ) or (
+                isinstance(n, ast.Import) and any(a.name == "okxq.risk.portfolio" for a in n.names)
+            )
+            if whole and rel not in APPLY_ALLOWED:
+                offenders.append(f"{rel}: imports the portfolio module whole")
             if isinstance(n, ast.Name | ast.Attribute):
                 name = getattr(n, "id", None) or getattr(n, "attr", None)
                 if name == "PortfolioStore" and rel != "risk/store.py":
