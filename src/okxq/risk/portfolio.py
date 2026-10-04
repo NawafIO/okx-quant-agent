@@ -93,6 +93,9 @@ class Held:
     mark: Decimal
     mark_ts_ms: int
     leverage: Decimal
+    #: Fee paid at the open. Already in ``realised``; kept here so the win/loss test for
+    #: RC-13 judges the whole round trip, not the exit alone (cycle-2 advisor finding).
+    entry_fee: Decimal
 
     @property
     def unrealised(self) -> Decimal:
@@ -176,11 +179,12 @@ def apply(state: PortfolioState, event: Event) -> PortfolioState:
             event.entry,
             event.ts_ms,
             _positive("leverage", event.leverage),
+            _finite("fee", event.fee),
         )
         recent = tuple(t for t in s.entry_times_ms if t > event.ts_ms - HOUR_MS)
         s = replace(
             s,
-            realised=s.realised - _finite("fee", event.fee),
+            realised=s.realised - h.entry_fee,
             positions=tuple(sorted((*s.positions, h), key=lambda x: x.symbol)),
             entry_times_ms=(*recent, event.ts_ms),
         )
@@ -190,7 +194,9 @@ def apply(state: PortfolioState, event: Event) -> PortfolioState:
             raise PortfolioError(f"{event.symbol} is not held")
         price = _positive("price", event.price)
         pnl = replace(closing, mark=price).unrealised - _finite("fee", event.fee)
-        loss = pnl < 0
+        # A loss is judged on the ROUND TRIP: the entry fee was booked at the open, so a
+        # trade that only beats its exit fee is still a loss and must extend the streak.
+        loss = pnl - closing.entry_fee < 0
         s = replace(
             s,
             realised=s.realised + pnl,

@@ -59,6 +59,19 @@ def test_open_mark_close_and_conservative_equity() -> None:
     assert win.high_water_mark == win.equity == D(10_896)  # 9898 - 1 fee + 999
 
 
+def test_a_loss_is_judged_on_the_round_trip_including_the_entry_fee() -> None:
+    """Gross +0.5 at the close with no exit fee beats the exit fee but not the 1.0 entry fee:
+    the trade lost 0.5 net and must count for RC-13 (cycle-2 advisor finding)."""
+    s = apply(start(), opened())  # qty 10 @ 100, entry fee 1
+    assert s.positions[0].entry_fee == D(1)
+    shut = apply(s, Closed(T0 + 2, BTC, D("100.05"), D(0)))
+    assert shut.realised == D("9999.5")
+    assert (shut.consecutive_losses, shut.last_loss_ts_ms) == (1, T0 + 2)
+    # Exactly break-even on the round trip is not a loss.
+    even = apply(apply(start(), opened()), Closed(T0 + 2, BTC, D("100.1"), D(0)))
+    assert even.realised == D(10_000) and even.consecutive_losses == 0
+
+
 def test_short_side_pnl_stop_moves_and_funding() -> None:
     s = apply(start(), opened(side="SHORT"))
     s = apply(s, StopMoved(T0 + 2, BTC, D(102)))
