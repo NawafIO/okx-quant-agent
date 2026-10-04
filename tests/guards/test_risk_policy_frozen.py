@@ -20,8 +20,11 @@ from okxq.risk.policy import (
 pytestmark = pytest.mark.guard
 
 #: SHA-256 of RiskPolicy().canonical_json(), frozen at M5 (2026-10-03); re-pinned at the M5
-#: closing audit to add mark_stale_s (finding #5: the stale-mark budget was a caller argument).
-PINNED_SHA256 = "b4e030fc6e076dda80e7a828c9191f590d3315156d3534e9c3b57ab1644ab261"
+#: closing audit to add mark_stale_s (finding #5: the stale-mark budget was a caller argument);
+#: re-pinned in cycle 2 (advisor ruling) to make SZ-2's ATR a FIXED-BUFFER definition -
+#: atr_period 14, atr_buffer_bars 257, okxq.risk.atr.wilder_atr - so research and live compute
+#: the identical value whatever the series start. No threshold changed.
+PINNED_SHA256 = "d730735c275a28684bd96901336ed976a42871ce22f32a5295e026aaa5c8abce"
 
 
 def test_risk_policy_matches_the_frozen_pin() -> None:

@@ -101,7 +101,12 @@ class RiskPolicy:
     max_leverage: int = 3  # RC-12
     # §13.2 / §13.3 values the architecture leaves open (first principles; M5_DESIGN §2)
     min_stop_atr: Decimal = Decimal("0.5")  # stop >= half an hourly ATR(14, Wilder)
-    atr_definition: str = "Wilder ATR(14) on closed 1h bars"
+    atr_definition: str = (
+        "Wilder ATR(14) on closed 1h bars, fixed buffer: the last 257 closed bars, seeded "
+        "with the mean of the first 14 true ranges in the buffer (okxq.risk.atr.wilder_atr)"
+    )
+    atr_period: int = 14
+    atr_buffer_bars: int = 257
     min_stop_ticks: int = 10  # stop >= 10 ticks (tick size itself is measured)
     liq_buffer_stop_multiple: Decimal = Decimal("1.5")  # liq distance >= 1.5 x stop distance
     margin_headroom: Decimal = Decimal("0.25")  # >= 25% of free margin left after the order
@@ -139,7 +144,7 @@ class RiskPolicy:
 
 
 #: SHA-256 of RiskPolicy().canonical_json().
-PINNED_RISK_POLICY_SHA256 = "b4e030fc6e076dda80e7a828c9191f590d3315156d3534e9c3b57ab1644ab261"
+PINNED_RISK_POLICY_SHA256 = "d730735c275a28684bd96901336ed976a42871ce22f32a5295e026aaa5c8abce"
 
 
 FROZEN_RISK_POLICY = RiskPolicy()
