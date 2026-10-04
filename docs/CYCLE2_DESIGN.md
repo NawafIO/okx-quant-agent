@@ -90,7 +90,15 @@ Advisor review of 7ae7250: **PROCEED WITH CHANGES** (§8). The four blocking fin
 
 **Minimum before calibration reads the files:**
 - 14 complete UTC days after that record;
-- at least 90% non-gap polls per instrument per day.
+- per instrument per day, at least 90% of the **expected** 1,440 polls are non-gap samples (≥ 1,296).
+  - Missing polls write no gap line (nothing runs while the machine sleeps), so coverage is counted against 1,440, **not** against the lines present.
+  - The hourly 59-minute runs cap coverage at about 98%.
+- Days that fail are excluded, not repaired. The 14 qualifying days need not be consecutive. Their dates are listed in the calibration record.
+
+**Owner evidence so far (2026-10-04):**
+- First Windows run 2026-10-03 22:04:47 → 23:02:55Z: 59 polls, 472 samples, 0 gaps, empty stderr.
+- The next run (23:04:48Z) never logged an end: the machine slept, and **WakeToRun did not wake it**. Nothing ran until 2026-10-04 10:21:05Z, about 11 h lost.
+- So 2026-10-04 cannot qualify. The clock record waits for the owner's `-Status` after the 10:21Z run.
 
 **Calibration rule (fixed and hashed before the files are read):**
 - `half_spread_t = max(1 tick, k_i · σ_1h,t · price)`.
