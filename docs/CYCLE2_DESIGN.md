@@ -170,6 +170,8 @@ Expected N after cycle 2, without a baseline re-run: about 1,530 plus the window
 
 ## 9. Track 1: intraday session framework (Revision 1, after the advisor's review of f78d051)
 
+**Outcome 2026-10-04: both Track-1 candidates DISCARDED on the pinned lower-bound baseline. Required edge 0.194–0.233 R per trade against a 0.15 R cutoff, at 20 seeds (CYCLE2_RESEARCH_LOG). No trials; N = 1,302.**
+
 **Owner direction:**
 - short-term intraday only, with holds of 2–6 h;
 - strictly flat before every funding settlement;

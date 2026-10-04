@@ -40,3 +40,61 @@ Median p*: M_u = 0.5668, M_k = 0.5648. min = 0.5648 > 0.55, so **DISCARDED**.
 - Asymmetric-payoff designs (trend followers win at hit rates below 0.5) are not excluded by this arithmetic.
 - Longer holds move the burden onto funding. In M4, funding-bound-v1 was the dominant cost of multi-day holds, and it is still a bound, not a measurement.
 - Maker execution would halve the fees, but the engine does not model it (no queue, no fill probability).
+
+## 2026-10-04: Track 1 lower-bound baseline. session_orb and impulse_continuation DISCARDED
+
+- **Pre-registration.** Spec `docs/c2_baseline_spec.md`, SHA-256 `924be378…`, pinned in `scripts/c2_baseline.py` and pushed in 8d3a68a **before** the first run. Timing rules were checked on synthetic data only.
+- **What ran.** Signal-free random-entry brackets through the engine and the D3 risk gate. 120 runs:
+  - decision runs: lower-bound costs (LB), OBSERVE_HALTS, 20 seeds;
+  - reported alongside: LB under ENFORCE, and current slip-v2 (SV2) under OBSERVE_HALTS, 5 seeds each.
+- **Not trials.** N is still **1,302**; the script checks the trial log before and after.
+- **Evidence.**
+  - Output: `docs/c2_runs/baseline_summary.txt` and `baseline_runs.json`.
+  - Audit record `ce5bf6f80268…` on the container's chain, preserved in `docs/ledger/`.
+  - Gate commits: 6c202e9, c212d0a, 0b66d8e, bd3342d, 0e01817; each advisor-reviewed, PROCEED.
+
+### Decision runs (LB, OBSERVE_HALTS, 20 seeds). Rule: discard if the required edge exceeds 0.15 R for both brackets
+
+| candidate | target | mean R per trade | SE | required edge | trades/seed | rule |
+|---|---|---|---|---|---|---|
+| session_orb | 1.5 ATR | −0.1941 | 0.0022 | **0.194 R** | 8,068 | fails |
+| session_orb | 2.0 ATR | −0.1980 | 0.0024 | **0.198 R** | 7,790 | fails |
+| impulse_continuation | 1.5 ATR | −0.2255 | 0.0048 | **0.226 R** | 3,172 | fails |
+| impulse_continuation | 2.0 ATR | −0.2328 | 0.0056 | **0.233 R** | 3,098 | fails |
+
+**Both candidates are DISCARDED with no trials.**
+- This is not marginal. The closest bracket is 0.044 R above the cutoff, which is 20 standard errors.
+- It is a **lower bound**: 1-tick spread, random entries that avoid the high-range bars real signals trade after, and halts not enforced. Under the current slip-v2 the requirement is 0.25–0.29 R.
+
+### What the edge requirement is made of (reading; [Likely])
+- Fees are 10 bp on a stopped round trip and 7 bp when the maker target fills. ATR_1h is 0.76–1.68%, so that is about 0.06–0.13 R per trade.
+- The stop overshoot of 0.2 σ is about 0.125 R on each stop exit, and about 36% of exits are stops.
+- Impact slippage applies to the entry and to every taker exit.
+- [Guessing] To put 0.19 R in hit-rate terms: moving one trade from a stop (about −1.1 R) to the target (about +1.5 R) gains about 2.6 R. A signal would therefore have to turn roughly 7–8% of all trades from stops into targets, lifting the target rate from about 18% to about 25%, just to break even.
+
+### Exit mix, with an erratum
+- **Erratum.** The pinned script labelled strategy exits (the 6-bar cap and the pre-settlement forced exit, engine reason `signal`) as **"other"** instead of "time". A patch meant to fix that did not apply, and I missed it.
+- A seed-0 re-run lists every reason: `signal` 3,820, `stop` 2,767, `stop_residual` 23, `stop_gap(_residual)` 2, `take_profit` 1,447. There were no liquidations and no window or series ends. The time exits held 2–5 h, as designed.
+- So **read "other" in `baseline_summary.txt` as "time".** The decision metric, mean R, never uses exit labels and is unaffected. The script is corrected in the next commit; the pinned spec is unchanged.
+- **Corrected exit mix (decision runs):**
+  - session_orb at 1.5 / 2.0 ATR: time 47 / 54%, stop 35 / 36%, target 18 / 11%;
+  - impulse_continuation: time 45 / 52%, stop 36 / 37%, target 19 / 11%.
+- Against the driftless estimate (CYCLE2_DESIGN §9.2a): stops as predicted, targets a little lower, time exits a little higher.
+
+### Same-bar ambiguity and the 5m check (report-only)
+- Ambiguous stop exits, where the stop bar also traded through the target, are **0.5–1.2%** of stops in the decision runs.
+- For the 793 ambiguous exits on BTC, ETH and SOL, the 5m path shows:
+  - target first: 349 (44%);
+  - stop first: 388 (49%);
+  - both inside one 5m bar: 56;
+  - 654 more were on instruments with no 5m data.
+- So the engine's stop-first rule mis-scores about 44% of ambiguous trades. [Likely] At about 1% of stops this moves mean R by well under 0.01 R and cannot change either verdict.
+
+### Risk-gate measurements (context for the owner's RC-13 decision)
+- **OBSERVE_HALTS.** With halts not enforced, **RC-13 refused 41% of evaluated entries for session_orb and 28–29% for impulse_continuation** at zero edge. A low-win-rate bracket hits three losses in a row constantly, as CYCLE2_DESIGN §9.4 predicted.
+- **ENFORCE.** At zero edge, the RC-11 drawdown latch fires within the first **58–71 trades per seed**, out of 3,000–8,000 opportunities, and trading stops for the rest of the five years. RC-13 then shows only 0.3–0.4% refusals, because the RC-01 latch blocks first.
+- RC-16 (no regime label) and the other refusals are recorded per run in `baseline_runs.json`.
+
+### Consequence
+- Track 1 has no surviving candidate. Cycle 2 has run **no** trials; N = 1,302.
+- The RC-13 decision is **moot until a candidate survives feasibility**. The count-versus-size defect stays recorded (CYCLE2_DESIGN §9.4) for whenever one does.

@@ -1,0 +1,30 @@
+Track 1 lower-bound baseline; spec 924be378bffc; trials unchanged at 1302
+
+impulse_continuation   tgt 1.5 ATR LB  enforce       seeds  5  mean R -0.3979 +/- 0.0385  required edge 0.3979R  (report)
+                        trades/seed 71; exits other 48%, stop 36%, target 16%; ambiguous 3.1% of stops; RC-13 refusals 0.4% of 26283 evaluated
+impulse_continuation   tgt 1.5 ATR LB  observe_halts seeds 20  mean R -0.2255 +/- 0.0048  required edge 0.2255R  FAILS the 0.15R rule
+                        trades/seed 3172; exits other 45%, stop 36%, target 19%; ambiguous 1.2% of stops; RC-13 refusals 27.8% of 105489 evaluated
+impulse_continuation   tgt 1.5 ATR SV2 observe_halts seeds  5  mean R -0.2881 +/- 0.0121  required edge 0.2881R  (report)
+                        trades/seed 3071; exits other 45%, stop 36%, target 19%; ambiguous 1.2% of stops; RC-13 refusals 30.0% of 26283 evaluated
+impulse_continuation   tgt 2.0 ATR LB  enforce       seeds  5  mean R -0.4011 +/- 0.0316  required edge 0.4011R  (report)
+                        trades/seed 68; exits other 53%, stop 37%, target 10%; ambiguous 1.6% of stops; RC-13 refusals 0.4% of 26283 evaluated
+impulse_continuation   tgt 2.0 ATR LB  observe_halts seeds 20  mean R -0.2328 +/- 0.0056  required edge 0.2328R  FAILS the 0.15R rule
+                        trades/seed 3098; exits other 52%, stop 37%, target 11%; ambiguous 0.7% of stops; RC-13 refusals 28.9% of 105489 evaluated
+impulse_continuation   tgt 2.0 ATR SV2 observe_halts seeds  5  mean R -0.2947 +/- 0.0140  required edge 0.2947R  (report)
+                        trades/seed 2989; exits other 52%, stop 37%, target 11%; ambiguous 0.6% of stops; RC-13 refusals 31.2% of 26283 evaluated
+session_orb            tgt 1.5 ATR LB  enforce       seeds  5  mean R -0.4348 +/- 0.0795  required edge 0.4348R  (report)
+                        trades/seed 62; exits other 47%, stop 38%, target 15%; ambiguous 3.4% of stops; RC-13 refusals 0.3% of 109237 evaluated
+session_orb            tgt 1.5 ATR LB  observe_halts seeds 20  mean R -0.1941 +/- 0.0022  required edge 0.1941R  FAILS the 0.15R rule
+                        trades/seed 8068; exits other 47%, stop 35%, target 18%; ambiguous 1.2% of stops; RC-13 refusals 41.1% of 438028 evaluated
+session_orb            tgt 1.5 ATR SV2 observe_halts seeds  5  mean R -0.2517 +/- 0.0045  required edge 0.2517R  (report)
+                        trades/seed 7661; exits other 47%, stop 35%, target 18%; ambiguous 1.1% of stops; RC-13 refusals 44.4% of 109236 evaluated
+session_orb            tgt 2.0 ATR LB  enforce       seeds  5  mean R -0.4689 +/- 0.0724  required edge 0.4689R  (report)
+                        trades/seed 58; exits other 53%, stop 39%, target 8%; ambiguous 0.9% of stops; RC-13 refusals 0.3% of 109237 evaluated
+session_orb            tgt 2.0 ATR LB  observe_halts seeds 20  mean R -0.1980 +/- 0.0024  required edge 0.1980R  FAILS the 0.15R rule
+                        trades/seed 7790; exits other 54%, stop 36%, target 11%; ambiguous 0.6% of stops; RC-13 refusals 41.4% of 438029 evaluated
+session_orb            tgt 2.0 ATR SV2 observe_halts seeds  5  mean R -0.2552 +/- 0.0053  required edge 0.2552R  (report)
+                        trades/seed 7491; exits other 54%, stop 36%, target 10%; ambiguous 0.5% of stops; RC-13 refusals 44.4% of 109236 evaluated
+
+VERDICT session_orb: DISCARDED (both brackets need > 0.15R)
+VERDICT impulse_continuation: DISCARDED (both brackets need > 0.15R)
+5m diagnostic (ambiguous stop exits, decision runs): {'stop_first': 388, 'no_5m_data': 654, 'target_first': 349, 'both_in_one_5m_bar': 56}
