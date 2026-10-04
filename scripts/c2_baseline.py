@@ -224,7 +224,7 @@ def run_one(task: tuple[str, str, str, str, int]) -> dict[str, Any]:
             else "target"
             if reason == "take_profit"
             else "time"
-            if reason == "time"
+            if reason == "signal"  # strategy EXIT intents: the 6-bar cap or the forced exit
             else "other"
         )
         exits[kind] += 1
