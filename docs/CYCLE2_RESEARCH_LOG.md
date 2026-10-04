@@ -63,14 +63,14 @@ Median p*: M_u = 0.5668, M_k = 0.5648. min = 0.5648 > 0.55, so **DISCARDED**.
 | impulse_continuation | 2.0 ATR | −0.2328 | 0.0056 | **0.233 R** | 3,098 | fails |
 
 **Both candidates are DISCARDED with no trials.**
-- This is not marginal. The closest bracket is 0.044 R above the cutoff, which is 20 standard errors.
+- **Robust to sampling noise.** The closest bracket is 0.044 R above the cutoff, about 20 standard errors. But the standard error covers only random-draw noise. **The margin is about the size of one cost-model term, the stop overshoot (~0.045 R)**, which is frozen from measurement, not tuned (advisor wording).
 - It is a **lower bound**: 1-tick spread, random entries that avoid the high-range bars real signals trade after, and halts not enforced. Under the current slip-v2 the requirement is 0.25–0.29 R.
 
 ### What the edge requirement is made of (reading; [Likely])
 - Fees are 10 bp on a stopped round trip and 7 bp when the maker target fills. ATR_1h is 0.76–1.68%, so that is about 0.06–0.13 R per trade.
 - The stop overshoot of 0.2 σ is about 0.125 R on each stop exit, and about 36% of exits are stops.
 - Impact slippage applies to the entry and to every taker exit.
-- [Guessing] To put 0.19 R in hit-rate terms: moving one trade from a stop (about −1.1 R) to the target (about +1.5 R) gains about 2.6 R. A signal would therefore have to turn roughly 7–8% of all trades from stops into targets, lifting the target rate from about 18% to about 25%, just to break even.
+- [Guessing] **One illustrative path** to 0.19 R in hit-rate terms: moving one trade from a stop (about −1.1 R) to the target (about +1.5 R) gains about 2.6 R. A signal would therefore have to turn roughly 7–8% of all trades from stops into targets, lifting the target rate from about 18% to about 25%, just to break even. Improving the time exits is another path.
 
 ### Exit mix, with an erratum
 - **Erratum.** The pinned script labelled strategy exits (the 6-bar cap and the pre-settlement forced exit, engine reason `signal`) as **"other"** instead of "time". A patch meant to fix that did not apply, and I missed it.
@@ -88,7 +88,7 @@ Median p*: M_u = 0.5668, M_k = 0.5648. min = 0.5648 > 0.55, so **DISCARDED**.
   - stop first: 388 (49%);
   - both inside one 5m bar: 56;
   - 654 more were on instruments with no 5m data.
-- So the engine's stop-first rule mis-scores about 44% of ambiguous trades. [Likely] At about 1% of stops this moves mean R by well under 0.01 R and cannot change either verdict.
+- So the engine's stop-first rule mis-scores **349 of the 737 resolvable ambiguous trades, about 47%**. At about 1% of stops, with about 2.6–3.1 R per mis-scored trade, this moves mean R by about 0.004 R (advisor-checked). It cannot change either verdict. It covers only the years where 5m data exists.
 
 ### Risk-gate measurements (context for the owner's RC-13 decision)
 - **OBSERVE_HALTS.** With halts not enforced, **RC-13 refused 41% of evaluated entries for session_orb and 28–29% for impulse_continuation** at zero edge. A low-win-rate bracket hits three losses in a row constantly, as CYCLE2_DESIGN §9.4 predicted.
@@ -97,4 +97,38 @@ Median p*: M_u = 0.5668, M_k = 0.5648. min = 0.5648 > 0.55, so **DISCARDED**.
 
 ### Consequence
 - Track 1 has no surviving candidate. Cycle 2 has run **no** trials; N = 1,302.
-- The RC-13 decision is **moot until a candidate survives feasibility**. The count-versus-size defect stays recorded (CYCLE2_DESIGN §9.4) for whenever one does.
+- **The RC-13 decision is deferred, not moot.** The feasibility baseline itself runs under RC-13. The count-versus-size policy question (CYCLE2_DESIGN §9.4) is to be decided **before the next candidate's baseline spec is pinned** (advisor wording).
+
+### Disclosures added after the advisor's closing check
+
+**1. Funding was NOT zero, despite "zero by construction".** [Certain]
+- The pinned spec requires any nonzero funding to be reported. It is nonzero in **all 120 runs**: about −6 (ENFORCE) to −310 (OBSERVE) per run.
+- **Diagnosed** (seed 0, report-only re-run; `scripts` diagnostics not committed):
+  - every funded trade was on **XRP-USDT-SWAP**, mostly in 2020, when it traded only about 0.3–1.4 M XRP per hour;
+  - the engine's participation cap (10% of the previous bar's volume) let a 33k–458k XRP position leave only in pieces;
+  - so a forced exit decided at 07:00 spilled into the 08:00 bar and paid that settlement, and one stop took 6 hours to fill;
+  - 29 of 2,002 XRP trades in seed 0;
+  - there are no missing bars in any series (checked), so the gap hypothesis is ruled out.
+- **Not a bug:** this is the liquidity model working. "Zero funding by construction" holds only when exits are not capped.
+- About 1e-4 R per trade. **The verdict is unaffected.**
+- **Before any Track-1 trial:** the rationale and CYCLE2_DESIGN §9.1 must say "zero by construction except liquidity-capped exits". The planned zero-funding test must assert exactly that, not a blanket zero. It did not exist for this run.
+
+**2. Equity collapsed in the OBSERVE_HALTS runs.** [Certain] With halts not enforced, a zero-edge bracket keeps trading as equity bleeds:
+- final equity was **$10–$81 of $100k for session_orb** and **$1.2k–$4.6k for impulse_continuation**;
+- most decision-run trades were sized from a small fraction of the intended equity, and lot and minimum-size refusals (SZ-3, RC-12d) appear at small equity.
+
+**Does that flatter the requirement? It understates it.** Seed-0 mean R by equity at entry (report-only re-run):
+
+| candidate | equity ≥ $50k | $5k–50k | $500–5k | < $500 | all |
+|---|---|---|---|---|---|
+| session_orb | **−0.301** (n=566, se 0.04) | −0.180 (2,493) | −0.247 (1,847) | −0.136 (3,153) | −0.194 |
+| impulse_continuation | **−0.217** (n=709, se 0.04) | −0.213 (2,140) | −0.095 (338) | — | −0.226 |
+
+- Trades sized at full equity need **more** edge than the average.
+- Caveat: the full-equity trades are also the earliest (2020–21), so equity level and calendar period are confounded here.
+- Either way, the discard is if anything **conservative** (advisor, [Likely]: impact shrinks with size, and high-priced lots such as BTC, with the highest fee-in-R, drop out at small equity).
+
+**3. Deviation from CYCLE2_DESIGN §9.5.**
+- §9.5 required both rationales to be pinned before their baseline. Both still read "Not yet pinned".
+- **What was pinned, before the run, was the bracket set itself**, via the baseline spec hash `924be378`. So no result could steer the brackets.
+- The spec's sentence "its pinned grid contains both targets" was therefore inaccurate; the rationales' grids were drafts. Recorded as a deviation that the spec pin covers (advisor ruling).
