@@ -25,8 +25,8 @@ BASELINE_SCRIPT = "scripts/c2_baseline.py"
 
 
 def tree() -> ast.Module:
-    if not GATE.exists():
-        pytest.skip("research gate not present")
+    # Mandatory since the gate landed: these guards must never pass vacuously.
+    assert GATE.exists(), "okxq/backtest/riskgate.py is missing"
     return ast.parse(GATE.read_text(encoding="utf-8"))
 
 

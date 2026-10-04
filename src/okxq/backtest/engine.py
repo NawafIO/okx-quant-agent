@@ -42,6 +42,7 @@ from typing import Any, Protocol
 
 from okxq.backtest.history import HistoryBuffer, HistoryView
 from okxq.backtest.metrics import EquityPoint
+from okxq.backtest.riskgate import PendingEntry, ResearchRiskGate
 from okxq.backtest.sizing import Sizer, round_down_to_lot
 from okxq.backtest.spread import abdi_ranaldo_spread
 from okxq.backtest.types import (
@@ -238,11 +239,20 @@ class BacktestEngine:
         sizer: Sizer,
         trade_start_ms: int,
         end_ms: int,
+        risk_gate: ResearchRiskGate | None = None,
     ) -> None:
         if trade_start_ms >= end_ms:
             raise BacktestConfigError("empty backtest window")
+        if risk_gate is not None and config.entry_ttl_bars != 1:
+            raise BacktestConfigError(
+                "the research risk gate needs entry_ttl_bars == 1 (one entry fill = one Opened)"
+            )
         self._cfg = config
         self._sizer = sizer
+        #: M5 limits in research (cycle 2, D3). None = cycle-1 behaviour, bit-identical.
+        self._gate = risk_gate
+        self._pending_now: list[PendingEntry] = []
+        self._gate_closes: list[tuple[int, str, _TradeAccumulator]] = []
         self._start = trade_start_ms
         self._end = end_ms
         self._check_provenance(specs)
@@ -348,6 +358,10 @@ class BacktestEngine:
                 self._publish(st)
             if t_close < self._start:
                 continue
+            if self._gate is not None:
+                self._gate.marks(
+                    t_close, {k: self._inst[k].series.close[self._inst[k].idx] for k in closed}
+                )
             equity = self._equity()
             self._curve.append(EquityPoint(t_close, equity))
             ctx = StrategyContext(
@@ -359,7 +373,11 @@ class BacktestEngine:
                 positions=MappingProxyType(self._snapshots()),
                 equity=equity,
             )
-            for intent in strategy.on_bar(ctx):
+            intents = list(strategy.on_bar(ctx))
+            if self._gate is not None:
+                intents = self._gate_order(intents, t_close)
+                self._pending_now = []
+            for intent in intents:
                 self._accept(intent, t_close, frozenset(closed), equity)
 
         return BacktestResult(
@@ -372,9 +390,26 @@ class BacktestEngine:
             assumptions=MappingProxyType(self._assumptions()),
         )
 
+    @staticmethod
+    def _gate_order(intents: list[OrderIntent], t_close: int) -> list[OrderIntent]:
+        """Under the risk gate, entries compete for capacity (RC-06/07/08/14), so their order
+        matters: exits first, then entries in a neutral shuffle keyed on sha256(T|inst) -
+        never inst_id order, which would always favour BTC, DOGE, ETH (advisor ruling Q2)."""
+        exits = [i for i in intents if i.action is Action.EXIT]
+        entries = [i for i in intents if i.action is not Action.EXIT]
+        entries.sort(key=lambda i: hashlib.sha256(f"{t_close}|{i.inst_id}".encode()).hexdigest())
+        return exits + entries
+
     def _assumptions(self) -> dict[str, str]:
         c = self._cfg
-        return {
+        gate = {}
+        if self._gate is not None:
+            r = self._gate.report()
+            gate = {
+                "risk_gate": f"mode={r.mode} policy={r.policy_sha256[:12]} "
+                f"not_applicable={','.join(sorted(r.not_applicable))}"
+            }
+        return gate | {
             "sizer": self._sizer.sizer_id,
             "slippage": f"{c.slippage.assumption_id} y_impact={c.slippage.y_impact} "
             f"vol_lookback={c.slippage.vol_lookback} "
@@ -468,12 +503,33 @@ class BacktestEngine:
         if any(p.kind == "entry" for p in st.pending):
             self._reject(ts, intent.inst_id, "entry_already_pending")
             return
-        decision = self._sizer.size(
-            equity=equity, entry_ref=ref, stop=stop, side=side, spec=st.spec
-        )
+        if self._gate is None:
+            decision = self._sizer.size(
+                equity=equity, entry_ref=ref, stop=stop, side=side, spec=st.spec
+            )
+        else:
+            s, lo = st.series, max(0, st.idx - 256)
+            decision = self._gate.size(
+                ts=ts,
+                inst=intent.inst_id,
+                side=side,
+                entry_ref=ref,
+                stop=stop,
+                take_profit=tp,
+                highs=s.high[lo : st.idx + 1],
+                lows=s.low[lo : st.idx + 1],
+                closes=s.close[lo : st.idx + 1],
+                timeframe_ms=s.timeframe_ms,
+                pending=tuple(self._pending_now),
+            )
         if decision.qty_base <= 0:
-            self._reject(ts, intent.inst_id, f"sizer:{decision.reason}")
+            tag = "sizer" if self._gate is None else "risk"
+            self._reject(ts, intent.inst_id, f"{tag}:{decision.reason}")
             return
+        if self._gate is not None:
+            self._pending_now.append(
+                PendingEntry(intent.inst_id, side, decision.qty_base, ref, stop, decision.leverage)
+            )
         st.pending.append(
             _Pending(
                 "entry",
@@ -519,6 +575,12 @@ class BacktestEngine:
             self._funding(st, before, after_open, self._snap(st))
             if t_close == last_bar_close[st.series.inst_id]:
                 self._final_exit(st)
+        if self._gate is not None:
+            # After phase c: funding the engine attributed to a lifecycle that closed in this
+            # instant has landed on its accumulator and travels with the Closed event.
+            for ts, inst_id, acc in self._gate_closes:
+                self._gate.closed(ts, inst_id, acc.gross_pnl, acc.fees, acc.funding)
+            self._gate_closes.clear()
 
     def _final_exit(self, st: _Inst) -> None:
         s, i = st.series, st.idx
@@ -644,6 +706,10 @@ class BacktestEngine:
             )
             st.position = p
             order.acc = acc
+            if self._gate is not None:
+                self._gate.opened(
+                    ts, st.series.inst_id, order.side, qty, price, order.stop, order.leverage, fee
+                )
         p.avg_entry = (p.avg_entry * p.qty + price * qty) / (p.qty + qty)
         p.qty += qty
         p.margin += margin
@@ -710,6 +776,8 @@ class BacktestEngine:
             st.position = None
             st.pending = [o for o in st.pending if o.kind != "exit"]
             self._close_trade(st.series.inst_id, acc, ts)
+            if self._gate is not None:
+                self._gate_closes.append((ts, st.series.inst_id, acc))
         else:
             p.margin = p.margin * (p.qty - qty) / p.qty
             p.qty -= qty
@@ -837,6 +905,9 @@ class BacktestEngine:
                 continue
             self._cash += flow
             snap.acc.funding += flow
+            held = st.position
+            if self._gate is not None and held is not None and held.acc is snap.acc:
+                self._gate.funding(rate.ts_ms, s.inst_id, flow)
             self._funding_events.append(
                 FundingEvent(rate.ts_ms, s.inst_id, rate.rate, rate.modelled, flow, rate.is_bound)
             )
