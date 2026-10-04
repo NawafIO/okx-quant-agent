@@ -369,3 +369,57 @@ def test_a_daily_label_never_changes_when_later_days_are_appended() -> None:
     full = classify(Bars.of(c, h, lo, c, v))
     for n in (60, 150, 300):
         assert classify(Bars.of(c[:n], h[:n], lo[:n], c[:n], v[:n])) == full[:n]
+
+
+# --- review fixes (advisor, code review of bd3342d) --------------------------------------
+
+
+def test_a_backwards_event_other_than_gap_funding_raises() -> None:
+    from okxq.risk.portfolio import PortfolioError
+
+    g = gate([BTC])
+    g.marks(ts(WARM + 5), {BTC: D(1000)})
+    with pytest.raises(PortfolioError, match="precedes"):
+        g.marks(ts(WARM + 4), {BTC: D(1000)})
+
+
+def test_same_instant_funding_is_booked_as_funding_and_never_flips_rc13() -> None:
+    """Gross +5 beats both fees (2) but not the 10 funding paid in the closing instant: M5
+    judges win/loss without funding, so this is a WIN for RC-13; realised still drops."""
+    g = gate([BTC])
+    from okxq.backtest.types import Side
+
+    g.opened(ts(WARM + 1), BTC, Side.LONG, D(1), D(1000), D(980), D(1), D(1))
+    g.closed(ts(WARM + 2), BTC, gross=D(5), total_fees=D(2), total_funding=D(-10))
+    assert g.state.consecutive_losses == 0
+    assert g.state.realised == D(10_000) + D(5) - D(2) - D(10)
+
+
+def test_halts_count_bars_not_events() -> None:
+    ev, script = gap_loss("590")
+    bars = {BTC: series(rows(events=ev), inst=BTC), ETH: series(rows(), inst=ETH)}
+    g = gate([BTC, ETH], mode=GateMode.OBSERVE_HALTS)
+    build(bars, g).run(Scripted(script))
+    n = g.report().halts["RC-11 drawdown"]
+    # At most one count per bar open and one per bar close after the gap.
+    assert 0 < n <= 2 * (N - (WARM + 4))
+
+
+def test_the_gate_holds_exactly_what_the_engine_holds_at_every_decision() -> None:
+    insts = [BTC, ETH, SOL, XRP]
+    ev, script = stopped_out_three_times()
+    bars = {k: series(rows(events=ev if k == BTC else None), inst=k) for k in insts}
+    for i in (WARM + 30, WARM + 31, WARM + 40):
+        script.setdefault(ts(i), []).extend(long(k) for k in insts)
+    script.setdefault(ts(WARM + 35), []).append(OrderIntent(ETH, Action.EXIT))
+    g = gate(insts)
+    mismatches: list[int] = []
+
+    def check(ctx: object) -> None:
+        eng = {k: str(p.side) for k, p in ctx.positions.items()}  # type: ignore[attr-defined]
+        held = {h.symbol: h.side for h in g.state.positions}
+        if eng != held:
+            mismatches.append(ctx.ts_ms)  # type: ignore[attr-defined]
+
+    r = build(bars, g).run(Scripted(script, hook=check))
+    assert len(r.trades) >= 5 and mismatches == []

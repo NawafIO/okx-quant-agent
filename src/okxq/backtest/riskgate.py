@@ -31,8 +31,18 @@ chain (guards). Its latch is in memory and lives for one backtest:
 - ``Closed`` uses the effective price ``entry + sign * gross / qty`` (a liquidation included).
   Its fee is the exit fees minus any funding the engine attributed to the closed lifecycle
   within the closing instant.
-- Event timestamps are clamped to the state's last timestamp. That moves day attribution by
-  at most one bar.
+- Only a gap settlement's timestamp is clamped to the state's last; any other backwards event
+  raises. Funding attributed to a lifecycle in its closing instant is booked as funding before
+  ``Closed`` (it never decides a win or loss for RC-13, as in M5).
+
+**Known deviations from live (recorded, not hidden).**
+- The temporary latch SLIDES: halts are re-evaluated on every event, so it ends at the first
+  00:00 UTC at least 24 h after the LAST event at which the condition held. Live engages once
+  and waits for a human disarm. Harsher than live, accepted (advisor).
+- No ``entry_price_tolerance`` re-check at the fill: on continuous 1h bars the next open is
+  about the decision close, so it is immaterial (advisor).
+- The day boundary: the first event stamped 00:00 is a mark, so the hour 23:00-24:00 counts
+  toward the new day - a shift of at most one bar (advisor ruling).
 """
 
 from __future__ import annotations
@@ -179,7 +189,7 @@ class GateReport:
     failures: Mapping[str, int]
     #: Check ids that blocked, joined, -> count (the refusal reasons).
     refusals: Mapping[str, int]
-    #: Halt trigger -> number of bars at which it was active.
+    #: Halt trigger -> number of distinct event timestamps (bar opens/closes) at which it held.
     halts: Mapping[str, int]
     engagements: tuple[tuple[int, str], ...]
     #: Calendar year -> entries refused by RC-16 for lack of a regime label.
@@ -212,6 +222,7 @@ class ResearchRiskGate:
         self._failures: Counter[str] = Counter()
         self._refusals: Counter[str] = Counter()
         self._halts: Counter[str] = Counter()
+        self._halt_seen: dict[str, int] = {}
         self._no_label: Counter[int] = Counter()
 
     # -- the single path every portfolio event takes ---------------------------------------
@@ -219,8 +230,12 @@ class ResearchRiskGate:
     def _apply(self, event: Event) -> None:
         """Apply, then evaluate the halts at once (the B-1 rule: halts run on every event,
         not only when a signal arrives). The ONLY call of ``apply`` in this module (guard)."""
-        ts = max(event.ts_ms, self._state.last_ts_ms)
-        event = replace(event, ts_ms=ts)
+        ts = event.ts_ms
+        if isinstance(event, FundingAccrued) and ts < self._state.last_ts_ms:
+            # Only a settlement inside a data gap (F < T_open) arrives after other events of
+            # the same instant. Any other event going backwards is a bug: apply raises.
+            ts = self._state.last_ts_ms
+            event = replace(event, ts_ms=ts)
         with localcontext(risk_context()):
             self._state = apply(self._state, event)
             halts = halt_triggers(self._state, ts, self._p)
@@ -229,7 +244,10 @@ class ResearchRiskGate:
     def _halt(self, halts: tuple[Halt, ...], now_ms: int) -> None:
         self._latch.now_ms = max(self._latch.now_ms, now_ms)
         for h in halts:
-            self._halts[h.trigger.split(":")[0]] += 1
+            key = h.trigger.split(":")[0]
+            if self._halt_seen.get(key) != now_ms:  # count distinct timestamps, not events
+                self._halt_seen[key] = now_ms
+                self._halts[key] += 1
             self._latch.engage(h.trigger, {"observed": str(h.observed), "limit": str(h.limit)})
 
     # -- engine notifications -------------------------------------------------------------
@@ -262,8 +280,14 @@ class ResearchRiskGate:
         sign = ONE if held.side == "LONG" else -ONE
         price = held.entry + sign * gross / held.qty
         exit_fee = total_fees - self._entry_fee.pop(inst)
-        unsent = total_funding - self._funding_sent.pop(inst)
-        self._apply(Closed(ts, inst, price, exit_fee - unsent))
+        unsent = total_funding - self._funding_sent[inst]
+        if unsent:
+            # Funding the engine attributed to this lifecycle in its closing instant: still
+            # held here, so it is booked as funding, NOT folded into the exit fee - as in M5,
+            # funding never decides a trade's win/loss for RC-13 (advisor).
+            self.funding(ts, inst, unsent)
+        self._funding_sent.pop(inst)
+        self._apply(Closed(ts, inst, price, exit_fee))
 
     def marks(self, ts: int, closes: Mapping[str, Decimal]) -> None:
         """Every instrument whose bar closed at ``ts`` - held or not: an unheld mark rolls the
