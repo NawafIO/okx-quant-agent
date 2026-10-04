@@ -10,7 +10,7 @@ silently reset N to 0 - and a G-8 deflated by the wrong N is a dishonest gate. F
 | file | records | chain tip | SHA-256 of the file |
 |---|---|---|---|
 | `paper/trials.jsonl` | 1,302 trials | `1af678e4c2bb` | `6ac0cc48d9db2518fa3790b36a3ab7fdce9acd78ee15cbcf2e2d253a35630ab3` |
-| `paper/audit.jsonl` | 110 records | `ce5bf6f80268` | `a777ac41684d4a3cabf9547d928c19a1eedeb5d5738ffe52b651f7b0e390443d` |
+| `paper/audit.jsonl` | 111 records | `a505f22b3704` | `e7b358cd6f1fd1005f2c272d32b82624646654777d6cadc1698afdb23093b555` |
 
 Both chains verified with `okxq.audit.chain.verify_chain` before the copy. No credential is in
 either file (scanned). `.gitattributes` marks this directory `-text`, so no checkout converts

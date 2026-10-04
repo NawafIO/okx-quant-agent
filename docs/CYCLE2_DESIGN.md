@@ -8,6 +8,8 @@ Owner decisions of 2026-10-03:
 
 Status: trial log **N = 1,302**. Holdout sealed. PHASE 2. No cycle-2 trial has run.
 
+**FROZEN 2026-10-04 by the owner for 14 days** while the D2 spread collection runs (CYCLE2_RESEARCH_LOG, "State at the freeze").
+
 **Update 2026-10-03:** intraday_momentum is **DISCARDED on the fees-only feasibility bound** (min median p* 0.565 > 0.55; docs/CYCLE2_RESEARCH_LOG.md). N stays 1,302. Cycle 2 has no live candidate. §4 steps 4–5 do not run for it.
 
 Advisor review of 7ae7250: **PROCEED WITH CHANGES** (§8). The four blocking findings are folded in below. btc_lead_lag at 1h: **STOP**, agreed.

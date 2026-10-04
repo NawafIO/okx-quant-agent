@@ -132,3 +132,40 @@ Median p*: M_u = 0.5668, M_k = 0.5648. min = 0.5648 > 0.55, so **DISCARDED**.
 - §9.5 required both rationales to be pinned before their baseline. Both still read "Not yet pinned".
 - **What was pinned, before the run, was the bracket set itself**, via the baseline spec hash `924be378`. So no result could steer the brackets.
 - The spec's sentence "its pinned grid contains both targets" was therefore inaccurate; the rationales' grids were drafts. Recorded as a deviation that the spec pin covers (advisor ruling).
+
+## 2026-10-04: D2 spread collection started; development FROZEN for 14 days (owner decision)
+
+- **The owner's words:** "The collector is officially installed and running smoothly on my dedicated Desktop PC (0 gaps, standby/hibernate disabled)."
+  - Earlier report: task Running (267009), started 14:04 local, first poll 8 lines with 0 gaps.
+  - The laptop task is unregistered. The desktop is dedicated to 24/7 collection.
+  - Audit record `a505f22b3704` (owner_evidence), preserved in `docs/ledger/`.
+- **Evidence kind: owner attestation.** The `-Status` output named in CYCLE2_DESIGN §3 (result 0, fresh stamp) is **not yet supplied**. It is to be attached at the check-in.
+  - This does not weaken the calibration rule. Days qualify **from the files themselves**: at least 1,296 non-gap samples per instrument per UTC day (§3).
+- **First possible qualifying UTC day: 2026-10-05.** 2026-10-04 cannot qualify, because the laptop slept overnight and the desktop started mid-day. With no failures, the 14th qualifying day is 2026-10-18 at the earliest.
+- **Frozen:** no development, no trials, nothing pinned. N = **1,302**. The holdout is sealed. PHASE 2.
+
+### State at the freeze (pick up here)
+- **Cycle 2 candidates.** intraday_momentum, session_orb and impulse_continuation are DISCARDED on pre-registered feasibility checks. btc_lead_lag: STOP at 1h. squeeze_expansion_intraday: STOPPED. **No live candidate.**
+- **Built and reviewed:**
+  - the D3 research risk gate;
+  - the M5 RC-13 entry-fee fix;
+  - the fixed-buffer ATR, with the policy re-pinned to d730735c;
+  - the guard amendment;
+  - the spread collector.
+- **Open owner decisions:**
+  - **Direction:**
+    - (1) buy historical funding data, and test longer holds fairly (VENUE_FACTS §6);
+    - (2) a maker-execution fill model, needed for intraday to be viable;
+    - (3) stay paused.
+  - **RC-13:** count vs size (CYCLE2_DESIGN §9.4), to decide before the next candidate's baseline spec is pinned.
+- **Before any candidate trial:**
+  - walk-forward fold stitching for the gate (high-water mark, latch and RC-13 state carried across OOS folds);
+  - the funding check rewritten as "zero except liquidity-capped exits";
+  - D2 calibration: run on the collected files under the rule fixed and hashed **before** they are read (§3).
+- **What the owner brings at check-in:**
+  - the desktop's `data\paper\spreads\*.jsonl`, zipped (about 5 MB/day raw; it compresses well);
+  - `logs\paper\collect_spreads.log`;
+  - the `-Status` output.
+
+  A cloud session cannot read the desktop's disk, so the files must be uploaded or committed to a data branch.
+- **Unrelated, still running:** the weekly funding archive (P-11). OKX keeps only about 95 days of funding history, so a gap of 14 days loses nothing. Its last success is to be confirmed at check-in.
